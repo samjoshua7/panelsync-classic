@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PanelSync Admin - Login</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            --surface: rgba(255, 255, 255, 0.05);
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .login-card {
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 2.5rem;
+            border-radius: 24px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.025em;
+        }
+
+        .subtitle {
+            color: var(--text-dim);
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+
+        .google-btn {
+            background: white;
+            color: #1e293b;
+            border: none;
+            padding: 0.875rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .google-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+            background: #f8fafc;
+        }
+
+        .google-btn:active {
+            transform: translateY(0);
+        }
+
+        .google-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .google-icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        #errorBox {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 12px;
+            color: #fca5a5;
+            font-size: 0.875rem;
+            display: none;
+            text-align: left;
+            line-height: 1.5;
+        }
+
+        .footer {
+            margin-top: 2rem;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+
+        .footer a {
+            color: #818cf8;
+            text-decoration: none;
+        }
+
+        /* Decorative blobs */
+        .blob {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: var(--primary);
+            filter: blur(80px);
+            border-radius: 50%;
+            opacity: 0.15;
+            z-index: -1;
+        }
+
+        .blob-1 {
+            top: -100px;
+            left: -100px;
+        }
+
+        .blob-2 {
+            bottom: -100px;
+            right: -100px;
+            background: #c084fc;
+        }
+    </style>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+
+<body>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <div class="login-card">
+        <div class="logo">PanelSync</div>
+        <div class="subtitle">PanelSync Classic Control Center</div>
+
+        <button id="loginBtn" class="google-btn" onclick="handleLogin()">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="google-icon"
+                alt="Google">
+            Sign in with Google
+        </button>
+
+        <div id="errorBox">
+            <strong>Access Denied</strong><br>
+            Your account is not authorized to access this panel.
+            <br><br>
+            Contact <strong>Sam Joshua</strong> for access permissions.
+        </div>
+
+        <div class="footer">
+            Built for production environments. &copy; 2024
+        </div>
+    </div>
+
+    <script>
+        // Firebase Configuration (DO NOT REMOVE)
+        var firebaseConfig = {
+            apiKey: "AIzaSyC3TwG6SAgrBcVoHHPEWDl8DluGldZTYcs",
+            authDomain: "civic-voice-530e3.firebaseapp.com",
+            databaseURL: "https://civic-voice-530e3-default-rtdb.firebaseio.com",
+            projectId: "civic-voice-530e3",
+            storageBucket: "civic-voice-530e3.firebasestorage.app",
+            messagingSenderId: "445788979324",
+            appId: "1:445788979324:web:7d454068b866150f0c49f9",
+            measurementId: "G-QGZD0JBDVH"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+
+        const auth = firebase.auth();
+        const db = firebase.database();
+        const loginBtn = document.getElementById('loginBtn');
+        const errorBox = document.getElementById('errorBox');
+
+        function handleLogin() {
+            loginBtn.disabled = true;
+            loginBtn.innerText = "Connecting...";
+            errorBox.style.display = "none";
+
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider)
+                .then(result => {
+                    verifyAccess(result.user.email);
+                })
+                .catch(error => {
+                    console.error("Auth Error:", error);
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = '<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="google-icon"> Sign in with Google';
+                });
+        }
+
+        function verifyAccess(email) {
+            db.ref('auth-users').once('value')
+                .then(snapshot => {
+                    const users = snapshot.val();
+                    let isAllowed = false;
+
+                    if (Array.isArray(users)) {
+                        isAllowed = users.includes(email);
+                    } else if (users && typeof users === 'object') {
+                        // Check if email is a key or a value in the object
+                        const values = Object.values(users);
+                        const sanitizedEmail = email.replace(/\./g, ',');
+                        isAllowed = values.includes(email) || users[sanitizedEmail] === true;
+                    }
+
+                    if (isAllowed) {
+                        sessionStorage.setItem('auth', 'true');
+                        sessionStorage.setItem('adminEmail', email);
+                        window.location.href = 'admin.html';
+                    } else {
+                        throw new Error('Unauthorized');
+                    }
+                })
+                .catch(err => {
+                    console.error("Access Check Error:", err);
+                    auth.signOut();
+                    sessionStorage.clear();
+                    errorBox.style.display = "block";
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = '<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="google-icon"> Sign in with Google';
+                });
+        }
+
+        // Auto-redirect if already logged in and session exists
+        auth.onAuthStateChanged(user => {
+            if (user && sessionStorage.getItem('auth') === 'true') {
+                window.location.href = 'admin.html';
+            }
+        });
+    </script>
+</body>
+
+</html>

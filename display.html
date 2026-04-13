@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>PanelSync Display</title>
+  <style>
+    /* CSS resets and layout */
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: black;
+      color: white;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+
+    #viewport {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .media-layer {
+      max-width: 100%;
+      max-height: 100%;
+      transition: opacity 0.8s ease-in-out;
+      position: absolute;
+      opacity: 0;
+      display: none;
+    }
+
+    .active {
+      opacity: 1;
+      display: block;
+    }
+
+    /* Watermark Styles */
+    #watermark {
+      position: fixed;
+      bottom: 15px;
+      right: 15px;
+      text-align: right;
+      z-index: 1000;
+      opacity: 0.9;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      background: rgba(60, 60, 60, 0.4);
+      padding: 6px 12px;
+      border-radius: 8px;
+      backdrop-filter: blur(4px);
+    }
+
+    #watermark .small {
+      font-size: 10px;
+      margin-bottom: 0px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    #watermark .main {
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    /* Fullscreen Button Styles */
+    #fullscreenBtn {
+      position: fixed;
+      bottom: 70px;
+      right: 20px;
+      z-index: 2000;
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      color: white;
+      padding: 10px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.5s;
+      display: none;
+      /* Controlled by JS mousemove */
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    #fullscreenBtn:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    #debugOverlay {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.3);
+      z-index: 10;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="viewport">
+    <!-- Display Elements -->
+    <img id="imagePlayer" class="media-layer" alt="Signage Content">
+    <video id="videoPlayer" class="media-layer" playsinline></video>
+  </div>
+
+  <!-- Features -->
+  <div id="watermark">
+    <div class="small">Built with 💛 by</div>
+    <div class="main" id="dynamicName">Sam Joshua</div>
+  </div>
+
+  <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter Fullscreen</button>
+  <div id="debugOverlay">PanelSync Classic Display v2.0</div>
+
+  <script>
+    // ==========================================
+    // LEGACY SMART TV COMPATIBILITY (ES5 ONLY)
+    // ==========================================
+
+    var RTDB_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/media.json';
+    var mediaArray = [];
+    var currentIndex = -1;
+    var timer = null;
+    var nameList = ["Sam Joshua", "Team PanelSync", "II CSE C"];
+    var nameIndex = 0;
+    var mouseMoveTimer = null;
+
+    var imgEl = document.getElementById('imagePlayer');
+    var vidEl = document.getElementById('videoPlayer');
+    var nameEl = document.getElementById('dynamicName');
+    var fsBtn = document.getElementById('fullscreenBtn');
+
+    function fetchMedia() {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', RTDB_URL, true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            if (data && Array.isArray(data)) {
+              mediaArray = data;
+              if (currentIndex === -1 && mediaArray.length > 0) {
+                nextSlide();
+              }
+            }
+          } catch (e) {
+            console.error("JSON Parse Error", e);
+          }
+        }
+      };
+      xhr.send();
+    }
+
+    function nextSlide() {
+      if (mediaArray.length === 0) {
+        // Keep checking if empty
+        setTimeout(nextSlide, 5000);
+        return;
+      }
+
+      currentIndex++;
+      if (currentIndex >= mediaArray.length) {
+        currentIndex = 0;
+      }
+
+      var item = mediaArray[currentIndex];
+      if (!item || !item.url) {
+        nextSlide();
+        return;
+      }
+
+      if (item.type === 'video') {
+        playVideo(item);
+      } else {
+        playImage(item);
+      }
+    }
+
+    function playImage(item) {
+      vidEl.classList.remove('active');
+      vidEl.pause();
+      vidEl.src = "";
+
+      imgEl.src = item.url;
+      imgEl.classList.add('active');
+
+      var duration = parseInt(item.duration, 10) || 5;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(nextSlide, duration * 1000);
+    }
+
+    function playVideo(item) {
+      imgEl.classList.remove('active');
+
+      vidEl.src = item.url;
+      vidEl.classList.add('active');
+      vidEl.muted = false; // TV displays usually want audio if provided
+
+      vidEl.onended = function () {
+        nextSlide();
+      };
+
+      var playPromise = vidEl.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(function (error) {
+          console.warn("Autoplay blocked, skipping video", error);
+          nextSlide();
+        });
+      }
+    }
+
+    // Fullscreen Logic
+    function toggleFullscreen() {
+      var doc = window.document;
+      var docEl = doc.documentElement;
+
+      var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+      var cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+
+      if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+        requestFullScreen.call(docEl);
+      } else {
+        cancelFullScreen.call(doc);
+      }
+    }
+
+    // Watermark Rotation
+    function rotateNames() {
+      nameIndex++;
+      if (nameIndex >= nameList.length) nameIndex = 0;
+      nameEl.textContent = nameList[nameIndex];
+    }
+
+    // UI Interactions
+    document.addEventListener('mousemove', function () {
+      fsBtn.style.display = 'block';
+      fsBtn.style.opacity = '1';
+      if (mouseMoveTimer) clearTimeout(mouseMoveTimer);
+      mouseMoveTimer = setTimeout(function () {
+        fsBtn.style.opacity = '0';
+        setTimeout(function () { fsBtn.style.display = 'none'; }, 500);
+      }, 3000);
+    });
+
+    // Initialize
+    function init() {
+      fetchMedia();
+
+      // Background sync every 10 seconds
+      setInterval(fetchMedia, 10000);
+
+      // Watermark rotation every 5 seconds
+      setInterval(rotateNames, 5000);
+
+      // Auto-fullscreen trigger with delay
+      setTimeout(function () {
+        try {
+          toggleFullscreen();
+        } catch (e) {
+          console.warn("Initial FS blocked - needs user gesture");
+        }
+      }, 3000);
+    }
+
+    // Boot
+    window.onload = init;
+
+  </script>
+</body>
+
+</html>

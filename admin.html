@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PanelSync - Admin Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text-dark: #0f172a;
+            --text-gray: #64748b;
+            --danger: #ef4444;
+            --success: #10b981;
+            --border: #e2e8f0;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text-dark);
+        }
+
+        /* Top Navigation */
+        nav {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-brand {
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .admin-badge {
+            font-size: 0.85rem;
+            color: var(--text-gray);
+            font-weight: 500;
+        }
+
+        .logout-btn {
+            background: transparent;
+            color: var(--danger);
+            border: 1px solid var(--danger);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        /* Main Layout */
+        main {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            main { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Upload Section */
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-md);
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .upload-area:hover { border-color: var(--primary); }
+        .upload-area i { font-size: 2rem; color: var(--text-gray); margin-bottom: 1rem; }
+
+        .form-group { margin-top: 1.5rem; }
+        label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-gray); margin-bottom: 0.5rem; }
+        input[type="number"] {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: inherit;
+        }
+
+        .primary-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.875rem;
+            width: 100%;
+            border-radius: 10px;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .primary-btn:hover { background: var(--primary-hover); }
+        .primary-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+        /* Media Grid */
+        .media-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .media-card {
+            background: var(--surface);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s;
+        }
+        .media-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+
+        .preview-container {
+            height: 150px;
+            background: #e2e8f0;
+            position: relative;
+            overflow: hidden;
+        }
+        .preview-container img, .preview-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .badge-image { background: #dcfce7; color: #166534; }
+        .badge-video { background: #dbeafe; color: #1e40af; }
+
+        .media-content { padding: 1rem; flex-grow: 1; }
+        .duration-edit {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 5px;
+        }
+        .duration-input {
+            width: 60px;
+            padding: 4px 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        .actions {
+            padding: 1rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+        }
+        .btn-sm {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            flex: 1;
+        }
+        .btn-update { background: #f1f5f9; color: var(--text-dark); }
+        .btn-delete { background: #fee2e2; color: var(--danger); }
+
+        #statusMsg {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            display: none;
+        }
+        .status-info { background: #eff6ff; color: #1d4ed8; display: block !important; }
+        .status-error { background: #fef2f2; color: #b91c1c; display: block !important; }
+        .status-success { background: #f0fdf4; color: #15803d; display: block !important; }
+    </style>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+</head>
+<body>
+
+    <nav>
+        <div class="nav-brand">
+            <i class="fas fa-layer-group"></i> PanelSync Admin
+        </div>
+        <div class="user-info">
+            <span class="admin-badge" id="adminEmail">Loading profile...</span>
+            <button class="logout-btn" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        </div>
+    </nav>
+
+    <main>
+        <!-- Sidebar: Upload -->
+        <aside>
+            <div class="card">
+                <div class="card-title"><i class="fas fa-cloud-upload-alt"></i> New Content</div>
+                
+                <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                    <i class="fas fa-file-import"></i>
+                    <p style="margin:0; font-weight:600;">Click to upload</p>
+                    <p style="margin:5px 0 0; font-size:0.75rem; color:var(--text-gray);">Images or Videos (Max 10MB)</p>
+                </div>
+                <input type="file" id="fileInput" hidden accept="image/*,video/*">
+
+                <div id="imageControls" style="display: none;">
+                    <div class="form-group">
+                        <label>Display Duration (seconds)</label>
+                        <input type="number" id="durationInput" value="5" min="1" max="600">
+                    </div>
+                </div>
+
+                <div id="videoControls" style="display: none;">
+                    <p style="font-size:0.8rem; color:var(--text-gray); margin-top:1rem;">
+                        <i class="fas fa-info-circle"></i> Videos play for their entire duration.
+                    </p>
+                </div>
+
+                <button id="uploadBtn" class="primary-btn" disabled onclick="handleUpload()">Push to Displays</button>
+                <div id="statusMsg"></div>
+            </div>
+        </aside>
+
+        <!-- Content Grid -->
+        <section>
+            <div class="card">
+                <div class="card-title">
+                    <i class="fas fa-tv"></i> Active Display Loop
+                    <span style="font-size:0.8rem; font-weight:normal; margin-left:auto; color:var(--text-gray);" id="itemCount">0 items</span>
+                </div>
+                <div class="media-grid" id="mediaGrid">
+                    <!-- Dynamic Items -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // ==========================================
+        // SECURITY & CONFIG
+        // ==========================================
+        if (sessionStorage.getItem('auth') !== 'true') {
+            window.location.href = 'index.html';
+        }
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyC3TwG6SAgrBcVoHHPEWDl8DluGldZTYcs",
+            authDomain: "civic-voice-530e3.firebaseapp.com",
+            databaseURL: "https://civic-voice-530e3-default-rtdb.firebaseio.com",
+            projectId: "civic-voice-530e3",
+            storageBucket: "civic-voice-530e3.firebasestorage.app",
+            messagingSenderId: "445788979324",
+            appId: "1:445788979324:web:7d454068b866150f0c49f9",
+            measurementId: "G-QGZD0JBDVH"
+        };
+
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+
+        const auth = firebase.auth();
+        const db = firebase.database();
+        const storage = firebase.storage();
+
+        let mediaList = [];
+
+        // DOM Elements
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const imageControls = document.getElementById('imageControls');
+        const videoControls = document.getElementById('videoControls');
+        const statusMsg = document.getElementById('statusMsg');
+        const mediaGrid = document.getElementById('mediaGrid');
+        const adminEmail = document.getElementById('adminEmail');
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            adminEmail.textContent = sessionStorage.getItem('adminEmail');
+            
+            // Listen to data
+            db.ref('media').on('value', snapshot => {
+                mediaList = snapshot.val() || [];
+                renderGrid();
+            });
+        });
+
+        function setStatus(text, type) {
+            statusMsg.textContent = text;
+            statusMsg.className = 'status-' + type;
+            setTimeout(() => { if (type === 'success') statusMsg.style.display = 'none'; }, 5000);
+        }
+
+        function logout() {
+            auth.signOut();
+            sessionStorage.clear();
+            window.location.href = 'index.html';
+        }
+
+        // Handle File Selection
+        fileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Validation
+            const MB = 10 * 1024 * 1024;
+            if (file.size > MB) {
+                setStatus("File exceeds 10MB limit.", "error");
+                fileInput.value = '';
+                return;
+            }
+
+            imageControls.style.display = 'none';
+            videoControls.style.display = 'none';
+            uploadBtn.disabled = false;
+
+            if (file.type.startsWith('image/')) {
+                imageControls.style.display = 'block';
+            } else if (file.type.startsWith('video/')) {
+                videoControls.style.display = 'block';
+            } else {
+                setStatus("Unsupported file format.", "error");
+                uploadBtn.disabled = true;
+            }
+        });
+
+        // CRUD: Create
+        function handleUpload() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            uploadBtn.disabled = true;
+            setStatus("Preparing upload...", "info");
+
+            const fileName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+            const ref = storage.ref('panelsyncclassic/' + fileName);
+
+            ref.put(file).then(snapshot => {
+                setStatus("Synchronizing database...", "info");
+                return snapshot.ref.getDownloadURL();
+            }).then(url => {
+                const isImage = file.type.startsWith('image/');
+                const newItem = {
+                    url: url,
+                    type: isImage ? 'image' : 'video',
+                    storagePath: 'panelsyncclassic/' + fileName
+                };
+
+                if (isImage) {
+                    newItem.duration = parseInt(document.getElementById('durationInput').value) || 5;
+                }
+
+                const updatedList = [...mediaList, newItem];
+                return db.ref('media').set(updatedList);
+            }).then(() => {
+                setStatus("Content live on displays!", "success");
+                fileInput.value = '';
+                uploadBtn.disabled = true;
+                imageControls.style.display = 'none';
+                videoControls.style.display = 'none';
+            }).catch(err => {
+                setStatus(err.message, "error");
+                uploadBtn.disabled = false;
+            });
+        }
+
+        // CRUD: Read
+        function renderGrid() {
+            mediaGrid.innerHTML = '';
+            document.getElementById('itemCount').textContent = mediaList.length + ' items';
+
+            if (mediaList.length === 0) {
+                mediaGrid.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:var(--text-gray); padding:2rem;">No items in display loop. Start by uploading content.</p>';
+            }
+
+            mediaList.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'media-card';
+                
+                const badgeClass = item.type === 'image' ? 'badge-image' : 'badge-video';
+                
+                let preview = '';
+                if (item.type === 'video') {
+                    preview = `<video src="${item.url}" muted></video>`;
+                } else {
+                    preview = `<img src="${item.url}" alt="Preview">`;
+                }
+
+                let durationHtml = '';
+                if (item.type === 'image') {
+                    durationHtml = `
+                        <div class="duration-edit">
+                            <i class="far fa-clock"></i>
+                            <input type="number" class="duration-input" value="${item.duration}" 
+                                   onchange="updateDuration(${index}, this.value)">
+                            <span>sec</span>
+                        </div>
+                    `;
+                } else {
+                    durationHtml = `<p style="font-size:0.8rem; color:var(--text-gray); margin-top:5px;"><i class="fas fa-play"></i> Plays full length</p>`;
+                }
+
+                div.innerHTML = `
+                    <div class="preview-container">
+                        ${preview}
+                        <span class="badge ${badgeClass}">${item.type}</span>
+                    </div>
+                    <div class="media-content">
+                        ${durationHtml}
+                    </div>
+                    <div class="actions">
+                        <button class="btn-sm btn-delete" onclick="deleteItem(${index})"><i class="fas fa-trash"></i> Remove</button>
+                    </div>
+                `;
+                mediaGrid.appendChild(div);
+            });
+        }
+
+        // CRUD: Update
+        function updateDuration(index, newVal) {
+            const val = parseInt(newVal);
+            if (val > 0) {
+                mediaList[index].duration = val;
+                db.ref('media').set(mediaList);
+            }
+        }
+
+        // CRUD: Delete
+        function deleteItem(index) {
+            if (confirm("Permanently remove this item from display?")) {
+                const item = mediaList[index];
+                
+                // Keep DB clean - remove from storage too if path exists
+                if (item.storagePath) {
+                    storage.ref(item.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
+                }
+
+                mediaList.splice(index, 1);
+                db.ref('media').set(mediaList);
+            }
+        }
+
+    </script>
+</body>
+</html>
