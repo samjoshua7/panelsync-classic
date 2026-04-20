@@ -187,6 +187,41 @@
         }
         .badge-image { background: #dcfce7; color: #166534; }
         .badge-video { background: #dbeafe; color: #1e40af; }
+        .badge-text { background: #fef3c7; color: #92400e; }
+
+        /* Text Slide Controls & Modal */
+        .color-pickers { display: flex; gap: 10px; margin-top: 10px; }
+        .color-picker-group { flex: 1; }
+        textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+            box-sizing: border-box;
+        }
+        input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 2px;
+            cursor: pointer;
+        }
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 1000;
+            display: none; justify-content: center; align-items: center;
+        }
+        .modal {
+            background: var(--surface); border-radius: var(--radius-lg);
+            padding: 2rem; width: 100%; max-width: 500px;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+        }
+        .modal-header { font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 1.5rem; }
 
         .media-content { padding: 1rem; flex-grow: 1; }
         .duration-edit {
@@ -282,6 +317,33 @@
 
                 <button id="uploadBtn" class="primary-btn" disabled onclick="handleUpload()">Push to Displays</button>
                 <div id="statusMsg"></div>
+            </div>
+
+            <div class="card" style="margin-top: 2rem;">
+                <div class="card-title"><i class="fas fa-font"></i> New Text Slide</div>
+                
+                <div class="form-group" style="margin-top: 0;">
+                    <label>Text Content</label>
+                    <textarea id="textNewContent" placeholder="Enter slide text..."></textarea>
+                </div>
+
+                <div class="color-pickers">
+                    <div class="color-picker-group">
+                        <label>Background Color</label>
+                        <input type="color" id="textNewBg" value="#000000">
+                    </div>
+                    <div class="color-picker-group">
+                        <label>Text Color</label>
+                        <input type="color" id="textNewColor" value="#ffffff">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Duration (seconds)</label>
+                    <input type="number" id="textNewDuration" value="10" min="1" max="600">
+                </div>
+
+                <button class="primary-btn" onclick="handleAddText()">Add Text Slide</button>
             </div>
         </aside>
 
@@ -438,17 +500,22 @@
                 const div = document.createElement('div');
                 div.className = 'media-card';
                 
-                const badgeClass = item.type === 'image' ? 'badge-image' : 'badge-video';
+                let badgeClass = 'badge-image';
+                if (item.type === 'video') badgeClass = 'badge-video';
+                if (item.type === 'text') badgeClass = 'badge-text';
                 
                 let preview = '';
                 if (item.type === 'video') {
                     preview = `<video src="${item.url}" muted></video>`;
+                } else if (item.type === 'text') {
+                    const cleanText = item.content.replace(/</g, "&lt;");
+                    preview = `<div style="width:100%; height:100%; background:${item.bgColor || '#000'}; color:${item.textColor || '#fff'}; display:flex; justify-content:center; align-items:center; text-align:center; padding:10px; box-sizing:border-box; font-size:14px; font-weight:bold; overflow:hidden; white-space: pre-wrap;">${cleanText.substring(0,50)}${item.content.length>50?'...':''}</div>`;
                 } else {
                     preview = `<img src="${item.url}" alt="Preview">`;
                 }
 
                 let durationHtml = '';
-                if (item.type === 'image') {
+                if (item.type === 'image' || item.type === 'text') {
                     durationHtml = `
                         <div class="duration-edit">
                             <i class="far fa-clock"></i>
@@ -461,6 +528,11 @@
                     durationHtml = `<p style="font-size:0.8rem; color:var(--text-gray); margin-top:5px;"><i class="fas fa-play"></i> Plays full length</p>`;
                 }
 
+                let editBtnHtml = '';
+                if (item.type === 'text') {
+                    editBtnHtml = `<button class="btn-sm btn-update" onclick="openEditTextModal(${index})"><i class="fas fa-edit"></i> Edit</button>`;
+                }
+
                 div.innerHTML = `
                     <div class="preview-container">
                         ${preview}
@@ -470,6 +542,7 @@
                         ${durationHtml}
                     </div>
                     <div class="actions">
+                        ${editBtnHtml}
                         <button class="btn-sm btn-delete" onclick="deleteItem(${index})"><i class="fas fa-trash"></i> Remove</button>
                     </div>
                 `;
@@ -501,6 +574,102 @@
             }
         }
 
+        // --- TEXT SLIDE HANDLERS ---
+        function handleAddText() {
+            const content = document.getElementById('textNewContent').value.trim();
+            const bgColor = document.getElementById('textNewBg').value;
+            const textColor = document.getElementById('textNewColor').value;
+            const duration = parseInt(document.getElementById('textNewDuration').value) || 10;
+
+            if (!content) {
+                setStatus("Text content cannot be empty.", "error");
+                return;
+            }
+
+            setStatus("Adding text slide...", "info");
+
+            const newItem = {
+                type: 'text',
+                content: content,
+                bgColor: bgColor,
+                textColor: textColor,
+                duration: duration
+            };
+
+            const updatedList = [...mediaList, newItem];
+            db.ref('media').set(updatedList)
+                .then(() => {
+                    setStatus("Text slide added successfully!", "success");
+                    document.getElementById('textNewContent').value = '';
+                })
+                .catch(err => {
+                    setStatus(err.message, "error");
+                });
+        }
+
+        function openEditTextModal(index) {
+            const item = mediaList[index];
+            document.getElementById('editIndex').value = index;
+            document.getElementById('editContent').value = item.content;
+            document.getElementById('editBg').value = item.bgColor || '#000000';
+            document.getElementById('editColor').value = item.textColor || '#ffffff';
+            document.getElementById('editDuration').value = item.duration || 10;
+            
+            document.getElementById('textEditModal').style.display = 'flex';
+        }
+
+        function saveTextEdit() {
+            const index = document.getElementById('editIndex').value;
+            const item = mediaList[index];
+            
+            item.content = document.getElementById('editContent').value.trim();
+            item.bgColor = document.getElementById('editBg').value;
+            item.textColor = document.getElementById('editColor').value;
+            item.duration = parseInt(document.getElementById('editDuration').value) || 10;
+
+            if (!item.content) {
+                alert("Content cannot be empty.");
+                return;
+            }
+
+            db.ref('media').set(mediaList).then(() => {
+                document.getElementById('textEditModal').style.display = 'none';
+            });
+        }
     </script>
+
+    <!-- Edit Text Modal -->
+    <div class="modal-overlay" id="textEditModal">
+        <div class="modal">
+            <div class="modal-header">Edit Text Slide</div>
+            <input type="hidden" id="editIndex">
+            
+            <div class="form-group" style="margin-top: 0;">
+                <label>Text Content</label>
+                <textarea id="editContent"></textarea>
+            </div>
+
+            <div class="color-pickers">
+                <div class="color-picker-group">
+                    <label>Background Color</label>
+                    <input type="color" id="editBg">
+                </div>
+                <div class="color-picker-group">
+                    <label>Text Color</label>
+                    <input type="color" id="editColor">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Duration (seconds)</label>
+                <input type="number" id="editDuration" min="1" max="600">
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-sm btn-update" onclick="document.getElementById('textEditModal').style.display='none'">Cancel</button>
+                <button class="primary-btn" style="margin-top:0;" onclick="saveTextEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

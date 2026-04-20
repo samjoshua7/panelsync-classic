@@ -41,6 +41,27 @@
       display: block;
     }
 
+    #textPlayer {
+      width: 100%;
+      height: 100%;
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 5%;
+      box-sizing: border-box;
+      font-size: 6vw;
+      font-weight: bold;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+
+    #textPlayer.active {
+      display: flex !important;
+      opacity: 1;
+    }
+
     /* Watermark Styles */
     #watermark {
       position: fixed;
@@ -111,12 +132,13 @@
     <!-- Display Elements -->
     <img id="imagePlayer" class="media-layer" alt="Signage Content">
     <video id="videoPlayer" class="media-layer" playsinline></video>
+    <div id="textPlayer" class="media-layer"></div>
   </div>
 
   <!-- Features -->
   <div id="watermark">
-    <div class="small">Built with 💛 by</div>
-    <div class="main" id="dynamicName">Sam Joshua</div>
+    <div class="small">Built by</div>
+    <div class="main" id="dynamicName">II CSE C</div>
   </div>
 
   <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter Fullscreen</button>
@@ -138,6 +160,7 @@
 
     var imgEl = document.getElementById('imagePlayer');
     var vidEl = document.getElementById('videoPlayer');
+    var textEl = document.getElementById('textPlayer');
     var nameEl = document.getElementById('dynamicName');
     var fsBtn = document.getElementById('fullscreenBtn');
 
@@ -175,15 +198,21 @@
       }
 
       var item = mediaArray[currentIndex];
-      if (!item || !item.url) {
+      console.log("Current slide:", item);
+
+      if (!item || !item.type) {
         nextSlide();
         return;
       }
 
       if (item.type === 'video') {
         playVideo(item);
-      } else {
+      } else if (item.type === 'text') {
+        playText(item);
+      } else if (item.type === 'image') {
         playImage(item);
+      } else {
+        nextSlide(); // Skip unknown types
       }
     }
 
@@ -191,6 +220,7 @@
       vidEl.classList.remove('active');
       vidEl.pause();
       vidEl.src = "";
+      textEl.classList.remove('active');
 
       imgEl.src = item.url;
       imgEl.classList.add('active');
@@ -202,6 +232,7 @@
 
     function playVideo(item) {
       imgEl.classList.remove('active');
+      textEl.classList.remove('active');
 
       vidEl.src = item.url;
       vidEl.classList.add('active');
@@ -218,6 +249,22 @@
           nextSlide();
         });
       }
+    }
+
+    function playText(item) {
+      imgEl.classList.remove('active');
+      vidEl.classList.remove('active');
+      vidEl.pause();
+      vidEl.src = "";
+
+      textEl.style.backgroundColor = item.bgColor || '#000000';
+      textEl.style.color = item.textColor || '#ffffff';
+      textEl.textContent = item.content;
+      textEl.classList.add('active');
+
+      var duration = parseInt(item.duration, 10) || 10;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(nextSlide, duration * 1000);
     }
 
     // Fullscreen Logic
