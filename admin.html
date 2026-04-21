@@ -320,6 +320,19 @@
             </div>
 
             <div class="card" style="margin-top: 2rem;">
+                <div class="card-title"><i class="fas fa-cog"></i> Display Settings</div>
+                
+                <div class="form-group" style="margin-top: 0;">
+                    <label>Slide Transition effect</label>
+                    <select id="transitionSelect" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-family: inherit;">
+                        <option value="cut">Cut (Instant)</option>
+                        <option value="fade">Fade</option>
+                    </select>
+                </div>
+                <button class="primary-btn" onclick="saveTransition()">Save Setting</button>
+            </div>
+
+            <div class="card" style="margin-top: 2rem;">
                 <div class="card-title"><i class="fas fa-font"></i> New Text Slide</div>
                 
                 <div class="form-group" style="margin-top: 0;">
@@ -386,7 +399,8 @@
         const db = firebase.database();
         const storage = firebase.storage();
 
-        let mediaList = [];
+        let mediaArray = [];
+        let mediaMap = {};
 
         // DOM Elements
         const fileInput = document.getElementById('fileInput');
@@ -403,10 +417,59 @@
             
             // Listen to data
             db.ref('media').on('value', snapshot => {
-                mediaList = snapshot.val() || [];
+                const val = snapshot.val();
+                mediaMap = {};
+                mediaArray = [];
+                
+                if (val) {
+                    if (Array.isArray(val)) {
+                        // Migration logic
+                        let migratedData = {};
+                        val.forEach((item, idx) => {
+                            if (item) {
+                                const id = 'slide_' + Date.now() + '_' + idx;
+                                item.order = idx + 1;
+                                migratedData[id] = item;
+                            }
+                        });
+                        if (Object.keys(migratedData).length > 0) {
+                            db.ref('media').set(migratedData);
+                            return; // Wait for the new snapshot
+                        }
+                    } else {
+                        mediaMap = val;
+                        for (let key in val) {
+                            if (val.hasOwnProperty(key)) {
+                                const item = val[key];
+                                item.id = key;
+                                if (typeof item.order === 'undefined') item.order = 999;
+                                mediaArray.push(item);
+                            }
+                        }
+                    }
+                }
+                
+                mediaArray.sort((a, b) => a.order - b.order);
                 renderGrid();
             });
+
+            // Listen to settings
+            db.ref('settings/transition').on('value', snapshot => {
+                const trans = snapshot.val();
+                if (trans) {
+                    document.getElementById('transitionSelect').value = trans;
+                }
+            });
         });
+
+        function saveTransition() {
+            const val = document.getElementById('transitionSelect').value;
+            db.ref('settings/transition').set(val).then(() => {
+                setStatus("Transition setting updated!", "success");
+            }).catch(err => {
+                setStatus(err.message, "error");
+            });
+        }
 
         function setStatus(text, type) {
             statusMsg.textContent = text;
@@ -473,8 +536,14 @@
                     newItem.duration = parseInt(document.getElementById('durationInput').value) || 5;
                 }
 
-                const updatedList = [...mediaList, newItem];
-                return db.ref('media').set(updatedList);
+                let newOrder = 1;
+                if (mediaArray.length > 0) {
+                    newOrder = Math.max(...mediaArray.map(item => item.order)) + 1;
+                }
+                newItem.order = newOrder;
+                const newId = 'slide_' + Date.now();
+
+                return db.ref('media/' + newId).set(newItem);
             }).then(() => {
                 setStatus("Content live on displays!", "success");
                 fileInput.value = '';
@@ -490,13 +559,13 @@
         // CRUD: Read
         function renderGrid() {
             mediaGrid.innerHTML = '';
-            document.getElementById('itemCount').textContent = mediaList.length + ' items';
+            document.getElementById('itemCount').textContent = mediaArray.length + ' items';
 
-            if (mediaList.length === 0) {
+            if (mediaArray.length === 0) {
                 mediaGrid.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:var(--text-gray); padding:2rem;">No items in display loop. Start by uploading content.</p>';
             }
 
-            mediaList.forEach((item, index) => {
+            mediaArray.forEach((item, index) => {
                 const div = document.createElement('div');
                 div.className = 'media-card';
                 
@@ -520,7 +589,7 @@
                         <div class="duration-edit">
                             <i class="far fa-clock"></i>
                             <input type="number" class="duration-input" value="${item.duration}" 
-                                   onchange="updateDuration(${index}, this.value)">
+                                   onchange="updateDuration('${item.id}', this.value)">
                             <span>sec</span>
                         </div>
                     `;
@@ -528,12 +597,21 @@
                     durationHtml = `<p style="font-size:0.8rem; color:var(--text-gray); margin-top:5px;"><i class="fas fa-play"></i> Plays full length</p>`;
                 }
 
+                let orderControls = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding: 0 10px; padding-top:10px;">
+                        <button class="btn-sm btn-update" onclick="moveUp(${index})" ${index === 0 ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="Move Up"><i class="fas fa-arrow-up"></i></button>
+                        <span style="font-size:0.8rem; font-weight:800; color:var(--primary); padding:2px 8px; background:#e0e7ff; border-radius:12px;">#${index + 1}</span>
+                        <button class="btn-sm btn-update" onclick="moveDown(${index})" ${index === mediaArray.length - 1 ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="Move Down"><i class="fas fa-arrow-down"></i></button>
+                    </div>
+                `;
+
                 let editBtnHtml = '';
                 if (item.type === 'text') {
-                    editBtnHtml = `<button class="btn-sm btn-update" onclick="openEditTextModal(${index})"><i class="fas fa-edit"></i> Edit</button>`;
+                    editBtnHtml = `<button class="btn-sm btn-update" onclick="openEditTextModal('${item.id}')"><i class="fas fa-edit"></i> Edit</button>`;
                 }
 
                 div.innerHTML = `
+                    ${orderControls}
                     <div class="preview-container">
                         ${preview}
                         <span class="badge ${badgeClass}">${item.type}</span>
@@ -543,34 +621,57 @@
                     </div>
                     <div class="actions">
                         ${editBtnHtml}
-                        <button class="btn-sm btn-delete" onclick="deleteItem(${index})"><i class="fas fa-trash"></i> Remove</button>
+                        <button class="btn-sm btn-delete" onclick="deleteItem('${item.id}')"><i class="fas fa-trash"></i> Remove</button>
                     </div>
                 `;
                 mediaGrid.appendChild(div);
             });
         }
 
+        // CRUD: Reorder
+        function moveUp(index) {
+            if (index === 0) return;
+            const current = mediaArray[index];
+            const previous = mediaArray[index - 1];
+            
+            const updates = {};
+            updates[current.id + '/order'] = previous.order;
+            updates[previous.id + '/order'] = current.order;
+            
+            db.ref('media').update(updates);
+        }
+
+        function moveDown(index) {
+            if (index === mediaArray.length - 1) return;
+            const current = mediaArray[index];
+            const next = mediaArray[index + 1];
+            
+            const updates = {};
+            updates[current.id + '/order'] = next.order;
+            updates[next.id + '/order'] = current.order;
+            
+            db.ref('media').update(updates);
+        }
+
         // CRUD: Update
-        function updateDuration(index, newVal) {
+        function updateDuration(id, newVal) {
             const val = parseInt(newVal);
             if (val > 0) {
-                mediaList[index].duration = val;
-                db.ref('media').set(mediaList);
+                db.ref('media/' + id + '/duration').set(val);
             }
         }
 
         // CRUD: Delete
-        function deleteItem(index) {
+        function deleteItem(id) {
             if (confirm("Permanently remove this item from display?")) {
-                const item = mediaList[index];
+                const item = mediaMap[id];
                 
                 // Keep DB clean - remove from storage too if path exists
-                if (item.storagePath) {
+                if (item && item.storagePath) {
                     storage.ref(item.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
                 }
 
-                mediaList.splice(index, 1);
-                db.ref('media').set(mediaList);
+                db.ref('media/' + id).remove();
             }
         }
 
@@ -588,16 +689,22 @@
 
             setStatus("Adding text slide...", "info");
 
+            let newOrder = 1;
+            if (mediaArray.length > 0) {
+                newOrder = Math.max(...mediaArray.map(item => item.order)) + 1;
+            }
+
+            const newId = 'slide_' + Date.now();
             const newItem = {
                 type: 'text',
                 content: content,
                 bgColor: bgColor,
                 textColor: textColor,
-                duration: duration
+                duration: duration,
+                order: newOrder
             };
 
-            const updatedList = [...mediaList, newItem];
-            db.ref('media').set(updatedList)
+            db.ref('media/' + newId).set(newItem)
                 .then(() => {
                     setStatus("Text slide added successfully!", "success");
                     document.getElementById('textNewContent').value = '';
@@ -607,9 +714,9 @@
                 });
         }
 
-        function openEditTextModal(index) {
-            const item = mediaList[index];
-            document.getElementById('editIndex').value = index;
+        function openEditTextModal(id) {
+            const item = mediaMap[id];
+            document.getElementById('editIndex').value = id;
             document.getElementById('editContent').value = item.content;
             document.getElementById('editBg').value = item.bgColor || '#000000';
             document.getElementById('editColor').value = item.textColor || '#ffffff';
@@ -619,8 +726,8 @@
         }
 
         function saveTextEdit() {
-            const index = document.getElementById('editIndex').value;
-            const item = mediaList[index];
+            const id = document.getElementById('editIndex').value;
+            const item = mediaMap[id];
             
             item.content = document.getElementById('editContent').value.trim();
             item.bgColor = document.getElementById('editBg').value;
@@ -632,7 +739,7 @@
                 return;
             }
 
-            db.ref('media').set(mediaList).then(() => {
+            db.ref('media/' + id).set(item).then(() => {
                 document.getElementById('textEditModal').style.display = 'none';
             });
         }

@@ -30,18 +30,16 @@
     .media-layer {
       max-width: 100%;
       max-height: 100%;
-      transition: opacity 0.8s ease-in-out;
       position: absolute;
-      opacity: 0;
       display: none;
     }
 
-    .active {
-      opacity: 1;
+    .media-layer.active {
       display: block;
     }
 
-    #textPlayer {
+    /* textPlayer styles */
+    .text-player-class {
       width: 100%;
       height: 100%;
       display: none;
@@ -57,9 +55,41 @@
       white-space: pre-wrap;
     }
 
-    #textPlayer.active {
+    .text-player-class.active {
       display: flex !important;
+    }
+
+    .slide {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: opacity 0.5s ease;
+    }
+
+    .slide.active {
       opacity: 1;
+      z-index: 2;
+    }
+
+    .slide.inactive {
+      opacity: 0;
+      z-index: 1;
+    }
+
+    #progressBar {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      height: 2px;
+      background: white;
+      width: 100%;
+      z-index: 3000;
+      transform-origin: right;
     }
 
     /* Watermark Styles */
@@ -129,11 +159,18 @@
 <body>
 
   <div id="viewport">
-    <!-- Display Elements -->
-    <img id="imagePlayer" class="media-layer" alt="Signage Content">
-    <video id="videoPlayer" class="media-layer" playsinline></video>
-    <div id="textPlayer" class="media-layer"></div>
+    <div id="slideA" class="slide inactive">
+      <img id="imagePlayerA" class="media-layer" alt="Signage Content">
+      <video id="videoPlayerA" class="media-layer" playsinline></video>
+      <div id="textPlayerA" class="media-layer text-player-class"></div>
+    </div>
+    <div id="slideB" class="slide inactive">
+      <img id="imagePlayerB" class="media-layer" alt="Signage Content">
+      <video id="videoPlayerB" class="media-layer" playsinline></video>
+      <div id="textPlayerB" class="media-layer text-player-class"></div>
+    </div>
   </div>
+  <div id="progressBar"></div>
 
   <!-- Features -->
   <div id="watermark">
@@ -150,6 +187,7 @@
     // ==========================================
 
     var RTDB_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/media.json';
+    var SETTINGS_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/settings.json';
     var mediaArray = [];
     var currentIndex = -1;
     var timer = null;
@@ -158,11 +196,54 @@
     var nameIndex = 0;
     var mouseMoveTimer = null;
 
-    var imgEl = document.getElementById('imagePlayer');
-    var vidEl = document.getElementById('videoPlayer');
-    var textEl = document.getElementById('textPlayer');
+    var transitionType = 'cut';
+    var activeLayer = 'B';
+    var currentTimer = null;
+    var videoFallbackTimer = null;
+
     var nameEl = document.getElementById('dynamicName');
     var fsBtn = document.getElementById('fullscreenBtn');
+    var progressBar = document.getElementById('progressBar');
+
+    function startProgressBar(durationSeconds) {
+      if (!progressBar) return;
+      progressBar.style.transition = 'none';
+      progressBar.style.width = '100%';
+      void progressBar.offsetWidth; // Force reflow
+      if (durationSeconds > 0) {
+        progressBar.style.transition = 'width ' + durationSeconds + 's linear';
+        progressBar.style.width = '0%';
+      }
+    }
+
+    function getLayer(layerName) {
+      return {
+        container: document.getElementById('slide' + layerName),
+        imgEl: document.getElementById('imagePlayer' + layerName),
+        vidEl: document.getElementById('videoPlayer' + layerName),
+        textEl: document.getElementById('textPlayer' + layerName)
+      };
+    }
+
+    function fetchSettings() {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', SETTINGS_URL, true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            if (data && data.transition) {
+              transitionType = data.transition;
+            } else {
+              transitionType = 'cut';
+            }
+          } catch (e) {
+            console.error("Settings Parse Error", e);
+          }
+        }
+      };
+      xhr.send();
+    }
 
     function fetchMedia() {
       var xhr = new XMLHttpRequest();
@@ -171,8 +252,30 @@
         if (xhr.readyState === 4 && xhr.status === 200) {
           try {
             var data = JSON.parse(xhr.responseText);
-            if (data && Array.isArray(data)) {
-              mediaArray = data;
+            if (data) {
+              var tempArray = [];
+              if (Array.isArray(data)) {
+                // Legacy array fallback
+                for (var i = 0; i < data.length; i++) {
+                  if (data[i]) tempArray.push(data[i]);
+                }
+              } else {
+                // New object structure
+                for (var key in data) {
+                  if (data.hasOwnProperty(key)) {
+                    tempArray.push(data[key]);
+                  }
+                }
+              }
+
+              // Sort strictly by the 'order' field
+              tempArray.sort(function(a, b) {
+                var orderA = (a.order !== undefined) ? parseInt(a.order, 10) : 999;
+                var orderB = (b.order !== undefined) ? parseInt(b.order, 10) : 999;
+                return orderA - orderB;
+              });
+
+              mediaArray = tempArray;
               if (currentIndex === -1 && mediaArray.length > 0) {
                 nextSlide();
               }
@@ -187,8 +290,7 @@
 
     function nextSlide() {
       if (mediaArray.length === 0) {
-        // Keep checking if empty
-        setTimeout(nextSlide, 5000);
+        currentTimer = setTimeout(nextSlide, 5000);
         return;
       }
 
@@ -205,66 +307,137 @@
         return;
       }
 
+      playItem(item);
+    }
+
+    function setupLayer(layer, item) {
+      layer.imgEl.classList.remove('active');
+      layer.textEl.classList.remove('active');
+      layer.vidEl.classList.remove('active');
+
       if (item.type === 'video') {
-        playVideo(item);
+        layer.vidEl.src = item.url;
+        layer.vidEl.classList.add('active');
+        layer.vidEl.muted = false;
       } else if (item.type === 'text') {
-        playText(item);
+        layer.textEl.style.backgroundColor = item.bgColor || '#000000';
+        layer.textEl.style.color = item.textColor || '#ffffff';
+        layer.textEl.textContent = item.content;
+        layer.textEl.classList.add('active');
       } else if (item.type === 'image') {
-        playImage(item);
-      } else {
-        nextSlide(); // Skip unknown types
+        layer.imgEl.src = item.url;
+        layer.imgEl.classList.add('active');
       }
     }
 
-    function playImage(item) {
-      vidEl.classList.remove('active');
-      vidEl.pause();
-      vidEl.src = "";
-      textEl.classList.remove('active');
+    function playItem(item) {
+      if (currentTimer) {
+        clearTimeout(currentTimer);
+        currentTimer = null;
+      }
+      if (videoFallbackTimer) {
+        clearTimeout(videoFallbackTimer);
+        videoFallbackTimer = null;
+      }
 
-      imgEl.src = item.url;
-      imgEl.classList.add('active');
+      var nextLayerName = (activeLayer === 'A') ? 'B' : 'A';
+      var nextLayer = getLayer(nextLayerName);
+      var currentLayerObj = getLayer(activeLayer);
 
-      var duration = parseInt(item.duration, 10) || 5;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(nextSlide, duration * 1000);
-    }
+      var duration = 5;
 
-    function playVideo(item) {
-      imgEl.classList.remove('active');
-      textEl.classList.remove('active');
-
-      vidEl.src = item.url;
-      vidEl.classList.add('active');
-      vidEl.muted = false; // TV displays usually want audio if provided
-
-      vidEl.onended = function () {
-        nextSlide();
-      };
-
-      var playPromise = vidEl.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(function (error) {
-          console.warn("Autoplay blocked, skipping video", error);
+      if (item.type === 'image') {
+        duration = parseInt(item.duration, 10) || 5;
+        // 1. IMAGE PRELOADING (CRITICAL)
+        var preload = new Image();
+        preload.onload = function() {
+          setupLayer(nextLayer, item);
+          startSlide(nextLayerName, currentLayerObj, nextLayer, duration, false);
+        };
+        preload.onerror = function() {
+          console.warn("Failed to load image:", item.url);
           nextSlide();
-        });
+        };
+        preload.src = item.url;
+
+      } else if (item.type === 'text') {
+        duration = parseInt(item.duration, 10) || 10;
+        setupLayer(nextLayer, item);
+        startSlide(nextLayerName, currentLayerObj, nextLayer, duration, false);
+
+      } else if (item.type === 'video') {
+        setupLayer(nextLayer, item);
+        nextLayer.vidEl.onended = function () {
+          if (activeLayer === nextLayerName) {
+            nextSlide();
+          }
+        };
+
+        var playPromise = nextLayer.vidEl.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(function (error) {
+            console.warn("Autoplay blocked", error);
+            nextSlide();
+          });
+        }
+
+        if (!isNaN(nextLayer.vidEl.duration) && nextLayer.vidEl.duration > 0) {
+          duration = nextLayer.vidEl.duration;
+          startSlide(nextLayerName, currentLayerObj, nextLayer, duration, true);
+        } else {
+          nextLayer.vidEl.onloadedmetadata = function () {
+            if (videoFallbackTimer) {
+              clearTimeout(videoFallbackTimer);
+              videoFallbackTimer = null;
+            }
+            duration = nextLayer.vidEl.duration;
+            startSlide(nextLayerName, currentLayerObj, nextLayer, duration, true);
+          };
+          videoFallbackTimer = setTimeout(function () {
+            if (nextLayer.container.className.indexOf('inactive') !== -1) {
+              duration = 10;
+              startSlide(nextLayerName, currentLayerObj, nextLayer, duration, true);
+            }
+          }, 2000);
+        }
+      } else {
+        nextSlide();
       }
     }
 
-    function playText(item) {
-      imgEl.classList.remove('active');
-      vidEl.classList.remove('active');
-      vidEl.pause();
-      vidEl.src = "";
+    // UNIFIED SLIDE CONTROLLER
+    function startSlide(nextLayerName, currentLayer, nextLayer, duration, isVideo) {
+      // 1. Handle transition
+      if (transitionType === 'cut') {
+        nextLayer.container.style.transition = 'none';
+        currentLayer.container.style.transition = 'none';
+      } else {
+        nextLayer.container.style.transition = 'opacity 0.5s ease';
+        currentLayer.container.style.transition = 'opacity 0.5s ease';
+      }
 
-      textEl.style.backgroundColor = item.bgColor || '#000000';
-      textEl.style.color = item.textColor || '#ffffff';
-      textEl.textContent = item.content;
-      textEl.classList.add('active');
+      nextLayer.container.className = 'slide active';
+      currentLayer.container.className = 'slide inactive';
 
-      var duration = parseInt(item.duration, 10) || 10;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(nextSlide, duration * 1000);
+      activeLayer = nextLayerName;
+
+      // 2. Start progress bar EXACTLY when slide becomes visible
+      startProgressBar(duration);
+
+      // 3. Schedule next slide
+      if (!isVideo) {
+        currentTimer = setTimeout(nextSlide, duration * 1000);
+      }
+
+      // 4. Cleanup hidden container gracefully (no DOM clearing before fade)
+      setTimeout(function () {
+        if (currentLayer.container.className.indexOf('inactive') !== -1) {
+          if (currentLayer.vidEl) {
+            currentLayer.vidEl.pause();
+            currentLayer.vidEl.src = "";
+          }
+        }
+      }, 600);
     }
 
     // Fullscreen Logic
@@ -302,10 +475,14 @@
 
     // Initialize
     function init() {
+      fetchSettings();
       fetchMedia();
 
       // Background sync every 10 seconds
-      setInterval(fetchMedia, 10000);
+      setInterval(function () {
+        fetchSettings();
+        fetchMedia();
+      }, 10000);
 
       // Watermark rotation every 5 seconds
       setInterval(rotateNames, 5000);
