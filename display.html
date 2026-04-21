@@ -126,23 +126,14 @@
       bottom: 70px;
       right: 20px;
       z-index: 2000;
-      background: rgba(255, 255, 255, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.4);
+      background: rgba(0, 0, 0, 0.4);
+      border: none;
       color: white;
-      padding: 10px 15px;
-      border-radius: 8px;
+      padding: 8px 10px;
+      border-radius: 4px;
       cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.5s;
-      display: none;
-      /* Controlled by JS mousemove */
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    #fullscreenBtn:hover {
-      background: rgba(255, 255, 255, 0.4);
+      opacity: 0.25;
+      font-size: 18px;
     }
 
     #debugOverlay {
@@ -178,7 +169,7 @@
     <div class="main" id="dynamicName">II CSE C</div>
   </div>
 
-  <button id="fullscreenBtn" onclick="toggleFullscreen()">Enter Fullscreen</button>
+  <button id="fullscreenBtn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
   <div id="debugOverlay">PanelSync Classic Display v2.0</div>
 
   <script>
@@ -194,7 +185,6 @@
     var nameList = ["II CSE C"];
     // var nameList = ["Sam Joshua", "Team PanelSync", "II CSE C"];
     var nameIndex = 0;
-    var mouseMoveTimer = null;
 
     var transitionType = 'cut';
     var activeLayer = 'B';
@@ -269,7 +259,7 @@
               }
 
               // Sort strictly by the 'order' field
-              tempArray.sort(function(a, b) {
+              tempArray.sort(function (a, b) {
                 var orderA = (a.order !== undefined) ? parseInt(a.order, 10) : 999;
                 var orderB = (b.order !== undefined) ? parseInt(b.order, 10) : 999;
                 return orderA - orderB;
@@ -350,11 +340,11 @@
         duration = parseInt(item.duration, 10) || 5;
         // 1. IMAGE PRELOADING (CRITICAL)
         var preload = new Image();
-        preload.onload = function() {
+        preload.onload = function () {
           setupLayer(nextLayer, item);
           startSlide(nextLayerName, currentLayerObj, nextLayer, duration, false);
         };
-        preload.onerror = function() {
+        preload.onerror = function () {
           console.warn("Failed to load image:", item.url);
           nextSlide();
         };
@@ -462,16 +452,7 @@
       nameEl.textContent = nameList[nameIndex];
     }
 
-    // UI Interactions
-    document.addEventListener('mousemove', function () {
-      fsBtn.style.display = 'block';
-      fsBtn.style.opacity = '1';
-      if (mouseMoveTimer) clearTimeout(mouseMoveTimer);
-      mouseMoveTimer = setTimeout(function () {
-        fsBtn.style.opacity = '0';
-        setTimeout(function () { fsBtn.style.display = 'none'; }, 500);
-      }, 3000);
-    });
+    // UI Interactions removed for TV compatibility
 
     // Initialize
     function init() {
@@ -490,11 +471,16 @@
       // Auto-fullscreen trigger with delay
       setTimeout(function () {
         try {
-          toggleFullscreen();
+          var doc = window.document;
+          var docEl = doc.documentElement;
+          var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+          if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+            if (requestFullScreen) requestFullScreen.call(docEl);
+          }
         } catch (e) {
           console.warn("Initial FS blocked - needs user gesture");
         }
-      }, 3000);
+      }, 1500);
     }
 
     // Boot
