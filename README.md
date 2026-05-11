@@ -1,35 +1,99 @@
-# panelsync-classic
+# PanelSync Classic - Multi-Department Digital Signage
 
-## Simple PanelSync Classic Demo
+## Overview
 
-This workspace includes two lightweight static pages for a Firebase REST-backed signage demo:
+A scalable Firebase-based digital signage system supporting multiple isolated departments with background images and music.
 
-- `display.html` — fullscreen TV view that cycles media from Firebase Realtime Database
-- `admin.html` — simple admin panel for uploading files to Firebase Storage and managing the media list with Google sign-in
+## Features
 
-### Google sign-in
+- **Multi-Department Support**: Each department has isolated users, media, settings, backgrounds, and music
+- **Background Images**: Optional background images for slides
+- **Background Music**: Optional background music playback
+- **Google Authentication**: Secure admin access
+- **Real-time Updates**: Live content synchronization
+- **Responsive Design**: Works on TVs, tablets, and computers
 
-`admin.html` now uses Google Sign-In to authenticate the uploader. Replace `YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com` in the admin page with your own Google OAuth client ID.
+## Department URLs
 
-### Storage bucket
+Access different departments using URL parameters:
 
-This demo is configured to store media under the Firebase Storage bucket:
+- `admin.html?dept=cse` — CSE Department Admin
+- `admin.html?dept=civil` — Civil Department Admin
+- `admin.html?dept=ece` — ECE Department Admin
+- `display.html?dept=cse` — CSE Department Display
+- `display.html?dept=civil` — Civil Department Display
 
-`gs://civic-voice-530e3.firebasestorage.app/panelsyncclassic`
+Supported departments: `cse`, `civil`, `ece`, `eee`, `mech`, `it`, `chem`, `bio`
 
-In `admin.html`, uploaded files are stored under the `panelsyncclassic/` folder and then written to the Realtime Database.
+## Firebase Structure
 
-### Setup
+```
+{
+  "dept": {
+    "cse": {
+      "users": {...},
+      "media": {
+        "slide_xxx": {
+          "type": "image/text/video",
+          "url": "...",
+          "storagePath": "...",
+          "duration": 5,
+          "order": 1,
+          "useBackground": true,
+          "useMusic": false
+        }
+      },
+      "backgrounds": {
+        "bg1": {
+          "url": "...",
+          "storagePath": "..."
+        }
+      },
+      "music": {
+        "music1": {
+          "url": "...",
+          "storagePath": "..."
+        }
+      },
+      "settings": {
+        "transition": "fade"
+      }
+    }
+  }
+}
+```
 
-The Firebase Database URL and Storage bucket are now hardcoded in `admin.html` for convenience:
+## Storage Structure
 
-- Database: `https://civic-voice-530e3-default-rtdb.firebaseio.com/`
-- Storage: `civic-voice-530e3.firebasestorage.app`
+Files are stored department-wise in Firebase Storage:
 
-Just replace `YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com` with your Google OAuth client ID.
+- `panelsyncclassic/{dept}/slides/` — Media files
+- `panelsyncclassic/{dept}/backgrounds/` — Background images
+- `panelsyncclassic/{dept}/music/` — Music files
 
-### Notes
+## Setup
 
-- Uses plain HTML/CSS and ES5-style JavaScript only.
-- No frameworks or modern JS syntax are used.
-- Firebase Storage is uploaded via REST and the media list is stored in Realtime Database.
+1. **Firebase Configuration**: Update the hardcoded Firebase config in both files
+2. **Google OAuth**: Replace `YOUR_GOOGLE_CLIENT_ID` with your Google OAuth client ID
+3. **Authentication**: Add authorized users to `/auth-users` in Realtime Database
+
+## Usage
+
+1. **Admin Panel**: Upload media, manage backgrounds/music, configure settings
+2. **Display**: Automatically cycles through department-specific content
+3. **Backgrounds**: Enable per-slide to show department backgrounds
+4. **Music**: Enable per-slide for background audio (videos default to no music)
+
+## Compatibility
+
+- Android WebView 66+
+- Modern web browsers
+- Smart TVs
+- Tablets and computers
+
+## Notes
+
+- Uses ES5 JavaScript for maximum compatibility
+- No external frameworks
+- Firebase REST API for data access
+- Automatic fullscreen on displays

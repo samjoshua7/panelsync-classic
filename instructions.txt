@@ -1,0 +1,3 @@
+to kill live server:
+netstat -ano | findstr :5500
+taskkill /PID 1234 /F

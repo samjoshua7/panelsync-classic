@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PanelSync Admin - Login</title>
+    <title>PanelSync - Login</title>
+    <link rel="icon" href="data:,">
     <style>
         :root {
             --primary: #6366f1;
@@ -155,6 +156,59 @@
             right: -100px;
             background: #c084fc;
         }
+
+        /* Dept Modal CSS */
+        .dept-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .dept-modal {
+            background: var(--surface);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 2.5rem;
+            border-radius: 24px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .dept-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .dept-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 1rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .dept-btn:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
     </style>
 
     <!-- Firebase SDKs -->
@@ -164,6 +218,17 @@
 </head>
 
 <body>
+    <!-- Dept Selection Modal -->
+    <div id="deptModalOverlay" class="dept-modal-overlay" style="display: none;">
+        <div class="dept-modal">
+            <h2 style="margin-top:0;">Select Department</h2>
+            <p style="color: var(--text-dim);">Please choose your department to continue.</p>
+            <div class="dept-grid" id="deptGrid">
+                <!-- Buttons injected by JS -->
+            </div>
+        </div>
+    </div>
+
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
 
@@ -211,6 +276,43 @@
         const loginBtn = document.getElementById('loginBtn');
         const errorBox = document.getElementById('errorBox');
 
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentDept = urlParams.get('dept');
+
+        let isBootstrapMode = false;
+
+        db.ref('depts').once('value').then(snapshot => {
+            const depts = snapshot.val() || {};
+            const allowedDepts = Object.keys(depts);
+
+            if (allowedDepts.length === 0) {
+                isBootstrapMode = true;
+                // Allow login card to show without ?dept=
+            } else if (!currentDept || !allowedDepts.includes(currentDept)) {
+                // Show modal and hide login card
+                document.querySelector('.login-card').style.display = 'none';
+                document.getElementById('deptModalOverlay').style.display = 'flex';
+                
+                const deptGrid = document.getElementById('deptGrid');
+                allowedDepts.forEach(dept => {
+                    const btn = document.createElement('button');
+                    btn.className = 'dept-btn';
+                    btn.innerText = dept;
+                    btn.onclick = () => {
+                        window.location.href = `?dept=${dept}`;
+                    };
+                    deptGrid.appendChild(btn);
+                });
+            } else {
+                // Auto-redirect if already logged in and session exists
+                auth.onAuthStateChanged(user => {
+                    if (user && sessionStorage.getItem('auth') === 'true') {
+                        window.location.href = `admin.html?dept=${currentDept}`;
+                    }
+                });
+            }
+        });
+
         function handleLogin() {
             loginBtn.disabled = true;
             loginBtn.innerText = "Connecting...";
@@ -228,25 +330,66 @@
                 });
         }
 
+        function emailToKey(email) {
+            return email.toLowerCase().replace(/\./g, "_").replace(/@/g, "_");
+        }
+
         function verifyAccess(email) {
-            db.ref('auth-users').once('value')
+            const sanitizedEmail = emailToKey(email);
+            console.log("Logged email:", email);
+            console.log("Generated key:", sanitizedEmail);
+            
+            if (isBootstrapMode) {
+                db.ref(`users/${sanitizedEmail}`).once('value')
+                    .then(snapshot => {
+                        const user = snapshot.val();
+                        if (user && user.active === true && user.roleLevel === 3) {
+                            sessionStorage.setItem('auth', 'true');
+                            sessionStorage.setItem('adminEmail', email);
+                            sessionStorage.setItem('roleLevel', user.roleLevel);
+                            window.location.href = 'admin.html';
+                        } else {
+                            throw new Error('Bootstrap requires Super User');
+                        }
+                    })
+                    .catch(err => {
+                        console.error("Bootstrap Access Error:", err);
+                        auth.signOut();
+                        sessionStorage.clear();
+                        errorBox.innerHTML = "<strong>Setup Required</strong><br>Only Super Users can perform initial setup.";
+                        errorBox.style.display = "block";
+                        loginBtn.disabled = false;
+                        loginBtn.innerHTML = '<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="google-icon"> Sign in with Google';
+                    });
+                return;
+            }
+
+            // Check global users first
+            let userRoleLevel = 0;
+            db.ref(`users/${sanitizedEmail}`).once('value')
                 .then(snapshot => {
-                    const users = snapshot.val();
-                    let isAllowed = false;
-
-                    if (Array.isArray(users)) {
-                        isAllowed = users.includes(email);
-                    } else if (users && typeof users === 'object') {
-                        // Check if email is a key or a value in the object
-                        const values = Object.values(users);
-                        const sanitizedEmail = email.replace(/\./g, ',');
-                        isAllowed = values.includes(email) || users[sanitizedEmail] === true;
+                    const user = snapshot.val();
+                    if (user && user.active === true && user.roleLevel >= 1) {
+                        userRoleLevel = user.roleLevel;
+                        return true;
                     }
-
+                    // If not found or not active globally, check department
+                    return db.ref(`dept/${currentDept}/users/${sanitizedEmail}`).once('value')
+                        .then(deptSnapshot => {
+                            const deptUser = deptSnapshot.val();
+                            if (deptUser && deptUser.active === true && deptUser.roleLevel >= 1) {
+                                userRoleLevel = deptUser.roleLevel;
+                                return true;
+                            }
+                            return false;
+                        });
+                })
+                .then(isAllowed => {
                     if (isAllowed) {
                         sessionStorage.setItem('auth', 'true');
                         sessionStorage.setItem('adminEmail', email);
-                        window.location.href = 'admin.html';
+                        sessionStorage.setItem('roleLevel', userRoleLevel);
+                        window.location.href = `admin.html?dept=${currentDept}`;
                     } else {
                         throw new Error('Unauthorized');
                     }
@@ -255,18 +398,12 @@
                     console.error("Access Check Error:", err);
                     auth.signOut();
                     sessionStorage.clear();
+                    errorBox.innerHTML = "<strong>Access Denied</strong><br>Your account is not authorized to access this panel.<br><br>Contact <strong>Sam Joshua</strong> for access permissions.";
                     errorBox.style.display = "block";
                     loginBtn.disabled = false;
                     loginBtn.innerHTML = '<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="google-icon"> Sign in with Google';
                 });
         }
-
-        // Auto-redirect if already logged in and session exists
-        auth.onAuthStateChanged(user => {
-            if (user && sessionStorage.getItem('auth') === 'true') {
-                window.location.href = 'admin.html';
-            }
-        });
     </script>
 </body>
 

@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <title>PanelSync Display</title>
+  <link rel="icon" href="data:,">
   <style>
     /* CSS resets and layout */
     html,
@@ -123,17 +124,40 @@
     /* Fullscreen Button Styles */
     #fullscreenBtn {
       position: fixed;
-      bottom: 70px;
+      bottom: 20px;
       right: 20px;
-      z-index: 2000;
+      z-index: 10000;
       background: rgba(0, 0, 0, 0.4);
-      border: none;
       color: white;
-      padding: 8px 10px;
-      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 10px 15px;
       cursor: pointer;
-      opacity: 0.25;
-      font-size: 18px;
+      font-size: 1.2rem;
+      transition: background 0.3s;
+    }
+    #fullscreenBtn:hover {
+      background: rgba(0, 0, 0, 0.8);
+    }
+    #audioUnlockBtn {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10001;
+      background: #4f46e5;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 15px 30px;
+      font-size: 1.5rem;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      display: none;
+    }
+    #audioUnlockBtn:hover {
+      background: #4338ca;
     }
 
     #debugOverlay {
@@ -148,8 +172,24 @@
 </head>
 
 <body>
+  <!-- Dept Selection Modal -->
+  <div id="deptModalOverlay"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 9999; justify-content: center; align-items: center; font-family: sans-serif;">
+    <div
+      style="background: #1e293b; padding: 2.5rem; border-radius: 24px; width: 90%; max-width: 500px; text-align: center;">
+      <h2 style="margin-top:0; color: white;">Select Department</h2>
+      <div id="deptGrid"
+        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 1rem; margin-top: 2rem;">
+      </div>
+    </div>
+  </div>
 
   <div id="viewport">
+    <!-- Background layer -->
+    <div id="backgroundLayer"
+      style="position: absolute; width: 100%; height: 100%; background-size: cover; background-position: center; background-repeat: no-repeat; z-index: 1;">
+    </div>
+
     <div id="slideA" class="slide inactive">
       <img id="imagePlayerA" class="media-layer" alt="Signage Content">
       <video id="videoPlayerA" class="media-layer" playsinline></video>
@@ -161,6 +201,9 @@
       <div id="textPlayerB" class="media-layer text-player-class"></div>
     </div>
   </div>
+
+  <!-- Background audio -->
+  <audio id="backgroundAudio" loop style="display: none;"></audio>
   <div id="progressBar"></div>
 
   <!-- Features -->
@@ -170,6 +213,7 @@
   </div>
 
   <button id="fullscreenBtn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
+  <button id="audioUnlockBtn" onclick="unlockAudio()">🔊 Enable Audio</button>
   <div id="debugOverlay">PanelSync Classic Display v2.0</div>
 
   <script>
@@ -177,19 +221,82 @@
     // LEGACY SMART TV COMPATIBILITY (ES5 ONLY)
     // ==========================================
 
-    var RTDB_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/media.json';
-    var SETTINGS_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/settings.json';
+    // Department support
+    var urlParams = (function () {
+      var params = {};
+      var query = window.location.search.substring(1);
+      if (query === '') return params;
+      var vars = query.split('&');
+      for (var i = 0; i < vars.length; i++) {
+        var pair = vars[i].split('=');
+        params[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1] || '');
+      }
+      return params;
+    })();
+
+    var currentDept = urlParams.dept;
+
+    function verifyDeptAndInit() {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', 'https://civic-voice-530e3-default-rtdb.firebaseio.com/depts.json', true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          try {
+            var data = JSON.parse(xhr.responseText) || {};
+            var allowedDepts = Object.keys(data);
+
+            if (!currentDept || allowedDepts.indexOf(currentDept) === -1) {
+              document.getElementById('viewport').style.display = 'none';
+              document.getElementById('deptModalOverlay').style.display = 'flex';
+              var deptGrid = document.getElementById('deptGrid');
+
+              for (var j = 0; j < allowedDepts.length; j++) {
+                var deptBtn = document.createElement('button');
+                deptBtn.style.cssText = 'padding: 1rem; border-radius: 12px; cursor: pointer; background: #4f46e5; color: white; border: none; font-weight: bold; text-transform: uppercase;';
+                deptBtn.innerText = allowedDepts[j];
+
+                (function (d) {
+                  deptBtn.onclick = function () {
+                    window.location.href = '?dept=' + d;
+                  };
+                })(allowedDepts[j]);
+
+                deptGrid.appendChild(deptBtn);
+              }
+            } else {
+              initDisplay();
+            }
+          } catch (e) {
+            console.error("Depts Parse Error", e);
+          }
+        }
+      };
+      xhr.send();
+    }
+
+    var RTDB_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/dept/' + currentDept + '/media.json';
+    var SETTINGS_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/dept/' + currentDept + '/settings.json';
+    var BACKGROUNDS_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/dept/' + currentDept + '/background.json';
+    var MUSIC_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/dept/' + currentDept + '/music.json';
+
     var mediaArray = [];
+    var currentBackground = null;
+    var currentMusicObj = null;
     var currentIndex = -1;
     var timer = null;
-    var nameList = ["II CSE C"];
+    // var nameList = ["II CSE C"];
     // var nameList = ["Sam Joshua", "Team PanelSync", "II CSE C"];
+    var nameList = ["Sam Joshua", "II CSE C", "Sam Joshua", "Ramakrishna", "Vignesh"];
     var nameIndex = 0;
 
     var transitionType = 'cut';
     var activeLayer = 'B';
     var currentTimer = null;
     var videoFallbackTimer = null;
+    var currentBackground = null;
+    var currentMusic = null;
+    var audioElement = null;
+    var audioUnlocked = false;
 
     var nameEl = document.getElementById('dynamicName');
     var fsBtn = document.getElementById('fullscreenBtn');
@@ -278,6 +385,36 @@
       xhr.send();
     }
 
+    function fetchBackgrounds() {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', BACKGROUNDS_URL, true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          try {
+            currentBackground = JSON.parse(xhr.responseText);
+          } catch (e) {
+            console.error("Backgrounds Parse Error", e);
+          }
+        }
+      };
+      xhr.send();
+    }
+
+    function fetchMusic() {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', MUSIC_URL, true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          try {
+            currentMusicObj = JSON.parse(xhr.responseText);
+          } catch (e) {
+            console.error("Music Parse Error", e);
+          }
+        }
+      };
+      xhr.send();
+    }
+
     function nextSlide() {
       if (mediaArray.length === 0) {
         currentTimer = setTimeout(nextSlide, 5000);
@@ -308,7 +445,8 @@
       if (item.type === 'video') {
         layer.vidEl.src = item.url;
         layer.vidEl.classList.add('active');
-        layer.vidEl.muted = false;
+        layer.vidEl.muted = !audioUnlocked;
+        layer.vidEl.style.backgroundColor = 'transparent';
       } else if (item.type === 'text') {
         layer.textEl.style.backgroundColor = item.bgColor || '#000000';
         layer.textEl.style.color = item.textColor || '#ffffff';
@@ -317,6 +455,70 @@
       } else if (item.type === 'image') {
         layer.imgEl.src = item.url;
         layer.imgEl.classList.add('active');
+      }
+
+      // Handle background
+      updateBackground(item);
+
+      // Handle music
+      updateMusic(item);
+    }
+
+    function updateBackground(item) {
+      var bgLayer = document.getElementById('backgroundLayer');
+      if (item.useBackground && currentBackground && currentBackground.url) {
+        bgLayer.style.backgroundImage = 'url("' + currentBackground.url + '")';
+        bgLayer.style.display = 'block';
+      } else {
+        bgLayer.style.display = 'none';
+      }
+    }
+
+    function updateMusic(item) {
+      if (!audioElement) {
+        audioElement = document.getElementById('backgroundAudio');
+      }
+
+      if (item.useMusic && currentMusicObj && currentMusicObj.url) {
+        if (audioElement.src !== currentMusicObj.url) {
+          audioElement.src = currentMusicObj.url;
+        }
+        
+        if (audioUnlocked) {
+          var playPromise = audioElement.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(function (e) {
+              console.warn("Audio play failed:", e);
+              document.getElementById('audioUnlockBtn').style.display = 'block';
+              audioUnlocked = false;
+            });
+          }
+        } else {
+          document.getElementById('audioUnlockBtn').style.display = 'block';
+        }
+      } else {
+        audioElement.pause();
+      }
+    }
+
+    function unlockAudio() {
+      audioUnlocked = true;
+      document.getElementById('audioUnlockBtn').style.display = 'none';
+      
+      var activeLayerObj = getLayer(activeLayer);
+      if (activeLayerObj.vidEl.classList.contains('active')) {
+        activeLayerObj.vidEl.muted = false;
+      }
+      
+      if (!audioElement) {
+        audioElement = document.getElementById('backgroundAudio');
+      }
+      
+      if (audioElement.src) {
+        var playPromise = audioElement.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(function(e) { console.warn("Audio play failed again:", e); });
+        }
       }
     }
 
@@ -439,11 +641,21 @@
       var cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
 
       if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
-        requestFullScreen.call(docEl);
+        if (requestFullScreen) requestFullScreen.call(docEl);
       } else {
-        cancelFullScreen.call(doc);
+        if (cancelFullScreen) cancelFullScreen.call(doc);
       }
     }
+
+    // Hide/show fullscreen button based on fullscreen state
+    document.addEventListener('fullscreenchange', function() {
+      var doc = window.document;
+      if (doc.fullscreenElement) {
+        fsBtn.style.display = 'none';
+      } else {
+        fsBtn.style.display = 'block';
+      }
+    });
 
     // Watermark Rotation
     function rotateNames() {
@@ -455,18 +667,22 @@
     // UI Interactions removed for TV compatibility
 
     // Initialize
-    function init() {
+    function initDisplay() {
       fetchSettings();
       fetchMedia();
+      fetchBackgrounds();
+      fetchMusic();
 
       // Background sync every 10 seconds
       setInterval(function () {
         fetchSettings();
         fetchMedia();
+        fetchBackgrounds();
+        fetchMusic();
       }, 10000);
 
       // Watermark rotation every 5 seconds
-      setInterval(rotateNames, 5000);
+      setInterval(rotateNames, 7000);
 
       // Auto-fullscreen trigger with delay
       setTimeout(function () {
@@ -475,16 +691,27 @@
           var docEl = doc.documentElement;
           var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
           if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
-            if (requestFullScreen) requestFullScreen.call(docEl);
+            if (requestFullScreen) {
+              var fsPromise = requestFullScreen.call(docEl);
+              if (fsPromise !== undefined) {
+                fsPromise.catch(function(e) {
+                  console.warn("Initial FS blocked - needs user gesture");
+                  fsBtn.style.display = 'block';
+                });
+              }
+            }
+          } else {
+            fsBtn.style.display = 'none';
           }
         } catch (e) {
           console.warn("Initial FS blocked - needs user gesture");
+          fsBtn.style.display = 'block';
         }
       }, 1500);
     }
 
     // Boot
-    window.onload = init;
+    window.onload = verifyDeptAndInit;
 
   </script>
 </body>

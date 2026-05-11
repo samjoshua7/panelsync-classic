@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PanelSync - Admin Dashboard</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -275,6 +276,118 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
 </head>
 <body>
+    <!-- Dept Selection Modal -->
+    <div id="deptModalOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 9999; justify-content: center; align-items: center;">
+        <div style="background: var(--surface); border: 1px solid rgba(255, 255, 255, 0.1); padding: 2.5rem; border-radius: 24px; width: 90%; max-width: 500px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+            <h2 style="margin-top:0;">Select Department</h2>
+            <p style="color: var(--text-gray);">Please choose your department to continue.</p>
+            <div id="deptGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 1rem; margin-top: 2rem;"></div>
+        </div>
+    </div>
+
+    <!-- Upload Progress Toast -->
+    <div id="uploadProgressToast" style="display:none; position:fixed; bottom:20px; right:20px; background:var(--surface); padding:15px; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.1); border:1px solid var(--border); z-index:9000; width:300px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+            <img id="uploadThumb" src="" style="width:40px; height:40px; object-fit:cover; border-radius:6px; display:none;">
+            <div style="flex:1;">
+                <div style="font-size:0.85rem; font-weight:600; margin-bottom:4px;" id="uploadTitle">Uploading...</div>
+                <div style="font-size:0.75rem; color:var(--text-gray);" id="uploadPercent">0%</div>
+            </div>
+        </div>
+        <div style="width:100%; height:6px; background:var(--border); border-radius:3px; overflow:hidden;">
+            <div id="uploadBar" style="width:0%; height:100%; background:var(--primary); transition:width 0.2s;"></div>
+        </div>
+    </div>
+
+    <!-- Bootstrap First Setup Modal -->
+    <div class="modal-overlay" id="bootstrapOverlay" style="display:none; z-index: 10000; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);">
+        <div class="modal">
+            <h2 style="margin-top:0; color:var(--primary); text-align:center;">Initial System Setup</h2>
+            <p style="color:var(--text-gray); text-align:center; font-size:0.9rem;">No departments exist. Please create the first department to initialize the system.</p>
+            
+            <div class="form-group" style="margin-top: 1.5rem;">
+                <label>Department Key (e.g., cse, main)</label>
+                <input type="text" id="bootDeptName" style="width:100%; padding:0.75rem; border:1px solid var(--border); border-radius:8px;">
+            </div>
+
+            <div class="form-group">
+                <label>Initial Master User Email</label>
+                <input type="email" id="bootDeptEmail" style="width:100%; padding:0.75rem; border:1px solid var(--border); border-radius:8px;">
+            </div>
+
+            <button class="primary-btn" onclick="bootstrapFirstDepartment()">Initialize System</button>
+        </div>
+    </div>
+
+    <!-- Create Dept Modal -->
+    <div class="modal-overlay" id="createDeptModal">
+        <div class="modal">
+            <div class="modal-header">Create New Department</div>
+            
+            <div class="form-group" style="margin-top: 0;">
+                <label>Department Key (e.g., ece, mech)</label>
+                <input type="text" id="newDeptName" style="width:100%; padding:0.75rem; border:1px solid var(--border); border-radius:8px;">
+            </div>
+
+            <div class="form-group">
+                <label>Initial Master User Email</label>
+                <input type="email" id="newDeptEmail" style="width:100%; padding:0.75rem; border:1px solid var(--border); border-radius:8px;">
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-sm btn-update" onclick="document.getElementById('createDeptModal').style.display='none'">Cancel</button>
+                <button class="primary-btn" style="margin-top:0;" onclick="createDepartment()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Management Modal -->
+    <div class="modal-overlay" id="userManagementModal">
+        <div class="modal" style="max-width: 600px;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <span id="umTitle">User Management</span>
+                <button class="btn-sm btn-update" onclick="document.getElementById('userManagementModal').style.display='none'">Close</button>
+            </div>
+            
+            <div id="umDeptSelectWrapper" style="display:none; margin-bottom: 1rem;">
+                <label style="font-weight:bold; margin-bottom:5px; display:block;">Select Department to Manage</label>
+                <select id="umDeptSelect" style="width:100%; padding:0.75rem; border:1px solid var(--border); border-radius:8px;" onchange="loadUsersForDept(this.value)">
+                </select>
+            </div>
+
+            <div style="background:var(--bg); padding:1rem; border-radius:8px; margin-bottom:1rem;">
+                <h4 style="margin-top:0;">Add New User</h4>
+                <div style="display:flex; gap:10px;">
+                    <input type="email" id="umNewEmail" placeholder="Email Address" style="flex:2; padding:0.75rem; border:1px solid var(--border); border-radius:8px;">
+                    <select id="umNewRole" style="flex:1; padding:0.75rem; border:1px solid var(--border); border-radius:8px;">
+                        <option value="1">Auth (Slides Only)</option>
+                        <option value="2">Master (Dept Admin)</option>
+                    </select>
+                    <button class="primary-btn" style="margin:0; width:auto; padding:0 1.5rem;" onclick="addDeptUser()">Add</button>
+                </div>
+            </div>
+
+            <div style="max-height: 300px; overflow-y: auto;">
+                <table style="width:100%; text-align:left; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border);">
+                            <th style="padding:10px;">Email</th>
+                            <th style="padding:10px;">Role</th>
+                            <th style="padding:10px; text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="umUserTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Loading Overlay -->
+    <div id="loadingOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index:9999; justify-content:center; align-items:center; flex-direction:column;">
+        <i class="fas fa-spinner fa-spin" style="font-size:3rem; color:var(--primary);"></i>
+        <h3 style="margin-top:1rem; color:var(--text-dark);" id="loadingText">Processing...</h3>
+    </div>
 
     <nav>
         <div class="nav-brand">
@@ -358,6 +471,49 @@
 
                 <button class="primary-btn" onclick="handleAddText()">Add Text Slide</button>
             </div>
+
+            <div class="card" style="margin-top: 2rem;">
+                <div class="card-title"><i class="fas fa-image"></i> Background Image</div>
+                
+                <div class="upload-area" id="bgUploadArea" onclick="if(!this.hasAttribute('disabled')) document.getElementById('bgFileInput').click()">
+                    <i class="fas fa-image"></i>
+                    <p style="margin:0; font-weight:600;">Upload Background</p>
+                    <p style="margin:5px 0 0; font-size:0.75rem; color:var(--text-gray);">Images only (Max 10MB)</p>
+                </div>
+                <input type="file" id="bgFileInput" hidden accept="image/*">
+
+                <div id="bgPreview" style="display:none; margin-top:10px;">
+                    <p id="bgFilename" style="font-size:0.8rem; font-weight:bold; margin-bottom:5px;"></p>
+                    <img id="bgThumbPreview" style="width:100px; height:100px; object-fit:cover; border-radius:8px; display:block; margin:0 auto;">
+                </div>
+
+                <button id="bgUploadBtn" class="primary-btn" disabled onclick="handleBackgroundUpload()" style="display:none;">Upload Background</button>
+
+                <div id="backgroundGrid" style="margin-top: 1rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 1rem;">
+                    <!-- Background images will be rendered here -->
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 2rem;">
+                <div class="card-title"><i class="fas fa-music"></i> Background Music</div>
+                
+                <div class="upload-area" id="musicUploadArea" onclick="if(!this.hasAttribute('disabled')) document.getElementById('musicFileInput').click()">
+                    <i class="fas fa-music"></i>
+                    <p style="margin:0; font-weight:600;">Upload Music</p>
+                    <p style="margin:5px 0 0; font-size:0.75rem; color:var(--text-gray);">MP3 files only (Max 10MB)</p>
+                </div>
+                <input type="file" id="musicFileInput" hidden accept="audio/*">
+
+                <div id="musicPreview" style="display:none; margin-top:10px;">
+                    <p id="musicFilename" style="font-size:0.8rem; font-weight:bold; margin-bottom:5px;"></p>
+                </div>
+
+                <button id="musicUploadBtn" class="primary-btn" disabled onclick="handleMusicUpload()" style="display:none;">Upload Music</button>
+
+                <div id="musicGrid" style="margin-top: 1rem; display: grid; grid-template-columns: 1fr; gap: 0.5rem;">
+                    <!-- Music files will be rendered here -->
+                </div>
+            </div>
         </aside>
 
         <!-- Content Grid -->
@@ -399,8 +555,86 @@
         const db = firebase.database();
         const storage = firebase.storage();
 
+        // ==========================================
+        // DEPARTMENT MANAGEMENT
+        // ==========================================
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentDept = urlParams.get('dept');
+
+        document.querySelector('nav').style.display = 'none';
+        document.querySelector('main').style.display = 'none';
+
+        db.ref('depts').once('value').then(snapshot => {
+            const depts = snapshot.val() || {};
+            const allowedDepts = Object.keys(depts);
+
+            const roleLevel = parseInt(sessionStorage.getItem('roleLevel')) || 0;
+
+            if (allowedDepts.length === 0) {
+                // BOOTSTRAP MODE
+                if (roleLevel === 3) {
+                    document.getElementById('bootstrapOverlay').style.display = 'flex';
+                } else {
+                    alert("System needs initial setup. Super user access required.");
+                    logout();
+                }
+            } else if (!currentDept || !allowedDepts.includes(currentDept)) {
+                document.getElementById('deptModalOverlay').style.display = 'flex';
+                
+                const deptGrid = document.getElementById('deptGrid');
+                allowedDepts.forEach(dept => {
+                    const btn = document.createElement('button');
+                    btn.style.cssText = 'padding: 1rem; border-radius: 12px; cursor: pointer; background: var(--primary); color: white; border: none; font-weight: bold; text-transform: uppercase; transition: all 0.2s;';
+                    btn.onmouseover = () => btn.style.transform = 'translateY(-2px)';
+                    btn.onmouseout = () => btn.style.transform = 'translateY(0)';
+                    btn.innerText = dept;
+                    btn.onclick = () => window.location.href = `?dept=${dept}`;
+                    deptGrid.appendChild(btn);
+                });
+            } else {
+                document.querySelector('nav').style.display = 'flex';
+                document.querySelector('main').style.display = 'grid';
+                
+                document.title = `PanelSync - ${currentDept.toUpperCase()} Admin`;
+                document.querySelector('.nav-brand').innerHTML = `
+                    <i class="fas fa-layer-group"></i> PanelSync ${currentDept.toUpperCase()}
+                `;
+
+                if (roleLevel === 3) {
+                    const createDeptBtn = document.createElement('button');
+                    createDeptBtn.className = 'primary-btn';
+                    createDeptBtn.style.padding = '0.5rem 1rem';
+                    createDeptBtn.style.marginTop = '0';
+                    createDeptBtn.style.marginLeft = '1rem';
+                    createDeptBtn.innerHTML = '<i class="fas fa-plus"></i> Create Department';
+                    createDeptBtn.onclick = () => document.getElementById('createDeptModal').style.display = 'flex';
+                    document.querySelector('.nav-brand').appendChild(createDeptBtn);
+
+                    const umBtn = document.createElement('button');
+                    umBtn.className = 'btn-update btn-sm';
+                    umBtn.style.marginLeft = '1rem';
+                    umBtn.style.padding = '0.5rem 1rem';
+                    umBtn.innerHTML = '<i class="fas fa-users-cog"></i> Global Users';
+                    umBtn.onclick = () => openUserManagement(true);
+                    document.querySelector('.nav-brand').appendChild(umBtn);
+                } else if (roleLevel === 2) {
+                    const umBtn = document.createElement('button');
+                    umBtn.className = 'btn-update btn-sm';
+                    umBtn.style.marginLeft = '1rem';
+                    umBtn.style.padding = '0.5rem 1rem';
+                    umBtn.innerHTML = '<i class="fas fa-users"></i> Dept Users';
+                    umBtn.onclick = () => openUserManagement(false);
+                    document.querySelector('.nav-brand').appendChild(umBtn);
+                }
+
+                initAdminData();
+            }
+        });
+
         let mediaArray = [];
         let mediaMap = {};
+        let currentBackground = null;
+        let currentMusicObj = null;
 
         // DOM Elements
         const fileInput = document.getElementById('fileInput');
@@ -411,19 +645,17 @@
         const mediaGrid = document.getElementById('mediaGrid');
         const adminEmail = document.getElementById('adminEmail');
 
-        // Init
-        document.addEventListener('DOMContentLoaded', () => {
+        function initAdminData() {
             adminEmail.textContent = sessionStorage.getItem('adminEmail');
             
-            // Listen to data
-            db.ref('media').on('value', snapshot => {
+            // Listen to department-specific data
+            db.ref(`dept/${currentDept}/media`).on('value', snapshot => {
                 const val = snapshot.val();
                 mediaMap = {};
                 mediaArray = [];
                 
                 if (val) {
                     if (Array.isArray(val)) {
-                        // Migration logic
                         let migratedData = {};
                         val.forEach((item, idx) => {
                             if (item) {
@@ -433,8 +665,8 @@
                             }
                         });
                         if (Object.keys(migratedData).length > 0) {
-                            db.ref('media').set(migratedData);
-                            return; // Wait for the new snapshot
+                            db.ref(`dept/${currentDept}/media`).set(migratedData);
+                            return;
                         }
                     } else {
                         mediaMap = val;
@@ -453,18 +685,30 @@
                 renderGrid();
             });
 
+            // Listen to single background
+            db.ref(`dept/${currentDept}/background`).on('value', snapshot => {
+                currentBackground = snapshot.val();
+                renderBackgrounds();
+            });
+
+            // Listen to single music
+            db.ref(`dept/${currentDept}/music`).on('value', snapshot => {
+                currentMusicObj = snapshot.val();
+                renderMusic();
+            });
+
             // Listen to settings
-            db.ref('settings/transition').on('value', snapshot => {
+            db.ref(`dept/${currentDept}/settings/transition`).on('value', snapshot => {
                 const trans = snapshot.val();
                 if (trans) {
                     document.getElementById('transitionSelect').value = trans;
                 }
             });
-        });
+        }
 
         function saveTransition() {
             const val = document.getElementById('transitionSelect').value;
-            db.ref('settings/transition').set(val).then(() => {
+            db.ref(`dept/${currentDept}/settings/transition`).set(val).then(() => {
                 setStatus("Transition setting updated!", "success");
             }).catch(err => {
                 setStatus(err.message, "error");
@@ -481,6 +725,229 @@
             auth.signOut();
             sessionStorage.clear();
             window.location.href = 'index.html';
+        }
+
+        function emailToKey(email) {
+            return email.toLowerCase().replace(/\./g, "_").replace(/@/g, "_");
+        }
+
+        function createDepartment() {
+            const name = document.getElementById('newDeptName').value.trim().toLowerCase();
+            const email = document.getElementById('newDeptEmail').value.trim();
+
+            if (!name || !email) {
+                alert("Please fill all fields");
+                return;
+            }
+
+            const emailKey = emailToKey(email);
+            console.log("Creating dept for master email:", email);
+            console.log("Master email key:", emailKey);
+            
+            const updates = {};
+            updates[`depts/${name}`] = true;
+            updates[`dept/${name}/settings/transition`] = 'fade';
+            updates[`dept/${name}/users/${emailKey}`] = {
+                email: email,
+                role: 'master',
+                roleLevel: 2,
+                active: true
+            };
+
+            db.ref().update(updates).then(() => {
+                alert(`Department ${name} created successfully!`);
+                document.getElementById('createDeptModal').style.display = 'none';
+                window.location.href = `?dept=${name}`;
+            }).catch(err => alert("Error creating department: " + err.message));
+        }
+
+        function bootstrapFirstDepartment() {
+            const name = document.getElementById('bootDeptName').value.trim().toLowerCase();
+            const email = document.getElementById('bootDeptEmail').value.trim();
+
+            if (!name || !email) {
+                alert("Please fill all fields");
+                return;
+            }
+
+            const emailKey = emailToKey(email);
+            console.log("Bootstrap master email:", email);
+            console.log("Bootstrap master email key:", emailKey);
+            
+            const updates = {};
+            updates[`depts/${name}`] = true;
+            updates[`dept/${name}/settings/transition`] = 'fade';
+            updates[`dept/${name}/users/${emailKey}`] = {
+                email: email,
+                role: 'auth',
+                roleLevel: 1,
+                active: true
+            };
+
+            db.ref().update(updates).then(() => {
+                alert(`System initialized! Department ${name} created.`);
+                document.getElementById('bootstrapOverlay').style.display = 'none';
+                window.location.href = `?dept=${name}`;
+            }).catch(err => alert("Error initializing system: " + err.message));
+        }
+
+        // ==========================================
+        // USER MANAGEMENT LOGIC
+        // ==========================================
+        let isGlobalUM = false;
+        let selectedUmDept = null;
+
+        function openUserManagement(global) {
+            isGlobalUM = global;
+            document.getElementById('userManagementModal').style.display = 'flex';
+            
+            const deptSelectWrapper = document.getElementById('umDeptSelectWrapper');
+            const deptSelect = document.getElementById('umDeptSelect');
+            
+            if (global) {
+                document.getElementById('umTitle').innerText = "Global User Management";
+                deptSelectWrapper.style.display = 'block';
+                
+                // Populate dropdown
+                db.ref('depts').once('value').then(snap => {
+                    const depts = snap.val() || {};
+                    deptSelect.innerHTML = '<option value="">-- Select a Department --</option>';
+                    deptSelect.innerHTML += '<option value="global_super">🌍 GLOBAL SUPER ADMINS</option>';
+                    Object.keys(depts).forEach(d => {
+                        const opt = document.createElement('option');
+                        opt.value = d;
+                        opt.innerText = d.toUpperCase();
+                        if (d === currentDept) opt.selected = true;
+                        deptSelect.appendChild(opt);
+                    });
+                    loadUsersForDept(currentDept);
+                });
+            } else {
+                document.getElementById('umTitle').innerText = "Department User Management";
+                deptSelectWrapper.style.display = 'none';
+                loadUsersForDept(currentDept);
+            }
+        }
+
+        function loadUsersForDept(dept) {
+            if (!dept) return;
+            selectedUmDept = dept;
+            const tbody = document.getElementById('umUserTableBody');
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:10px;">Loading...</td></tr>';
+
+            const refPath = dept === "global_super" ? 'users' : `dept/${dept}/users`;
+
+            db.ref(refPath).on('value', snapshot => {
+                // Ensure we only update if this dept is still selected
+                if (selectedUmDept !== dept) return; 
+                
+                const users = snapshot.val() || {};
+                tbody.innerHTML = '';
+                
+                if (Object.keys(users).length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:10px; color:var(--text-gray);">No users found.</td></tr>';
+                    return;
+                }
+
+                Object.keys(users).forEach(key => {
+                    const u = users[key];
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = '1px solid var(--border)';
+                    
+                    let roleBadge = '';
+                    if (u.roleLevel === 3) roleBadge = '<span class="badge badge-video">SUPER</span>';
+                    else if (u.roleLevel === 2) roleBadge = '<span class="badge badge-image">MASTER</span>';
+                    else roleBadge = '<span class="badge badge-text">AUTH</span>';
+
+                    tr.innerHTML = `
+                        <td style="padding:10px;">${u.email}</td>
+                        <td style="padding:10px;">${roleBadge}</td>
+                        <td style="padding:10px; text-align:right;">
+                            <button class="btn-sm btn-delete" onclick="deleteDeptUser('${key}')" id="del_btn_${key}">Delete</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+
+                    // Gray out self-delete
+                    const currentUserEmailKey = emailToKey(sessionStorage.getItem('adminEmail') || '');
+                    if (key === currentUserEmailKey) {
+                        const btn = document.getElementById(`del_btn_${key}`);
+                        btn.style.background = '#e2e8f0';
+                        btn.style.color = '#94a3b8';
+                        btn.style.cursor = 'not-allowed';
+                        btn.title = 'You cannot delete your own account.';
+                    }
+                });
+            });
+        }
+
+        function addDeptUser() {
+            const email = document.getElementById('umNewEmail').value.trim();
+            const roleLevel = parseInt(document.getElementById('umNewRole').value);
+            
+            if (!email) {
+                alert("Please enter an email address.");
+                return;
+            }
+            if (!selectedUmDept) {
+                alert("Please select a department first.");
+                return;
+            }
+
+            const emailKey = emailToKey(email);
+            
+            let refPath, userObj;
+            if (selectedUmDept === "global_super") {
+                refPath = `users/${emailKey}`;
+                userObj = { email: email, role: 'super', roleLevel: 3, active: true };
+            } else {
+                refPath = `dept/${selectedUmDept}/users/${emailKey}`;
+                const roleName = roleLevel === 2 ? 'master' : 'auth';
+                userObj = { email: email, role: roleName, roleLevel: roleLevel, active: true };
+            }
+
+            db.ref(refPath).set(userObj).then(() => {
+                document.getElementById('umNewEmail').value = '';
+                alert("User added successfully.");
+            }).catch(err => alert("Error adding user: " + err.message));
+        }
+
+        function deleteDeptUser(emailKey) {
+            if (!selectedUmDept) return;
+            
+            const currentUserEmailKey = emailToKey(sessionStorage.getItem('adminEmail') || '');
+            if (emailKey === currentUserEmailKey) {
+                alert("Action Blocked: You cannot delete your own account.");
+                return;
+            }
+
+            const refPath = selectedUmDept === "global_super" ? 'users' : `dept/${selectedUmDept}/users`;
+
+            db.ref(refPath).once('value').then(snap => {
+                const users = snap.val() || {};
+                const targetUser = users[emailKey];
+                if (!targetUser) return;
+
+                // Safety checks
+                if (selectedUmDept === "global_super" && targetUser.roleLevel === 3) {
+                    const superCount = Object.values(users).filter(u => u.roleLevel === 3).length;
+                    if (superCount <= 1) {
+                        alert("Action Blocked: At least one super user is required.");
+                        return;
+                    }
+                } else if (selectedUmDept !== "global_super" && targetUser.roleLevel === 2) {
+                    const masterCount = Object.values(users).filter(u => u.roleLevel === 2).length;
+                    if (masterCount <= 1) {
+                        alert("Action Blocked: At least one master user is required.");
+                        return;
+                    }
+                }
+
+                if (confirm("Are you sure you want to remove this user?")) {
+                    db.ref(`${refPath}/${emailKey}`).remove()
+                        .catch(err => alert("Error deleting user: " + err.message));
+                }
+            });
         }
 
         // Handle File Selection
@@ -511,6 +978,53 @@
         });
 
         // CRUD: Create
+        function uploadWithProgressUI(file, storagePath, titleText) {
+            return new Promise((resolve, reject) => {
+                const toast = document.getElementById('uploadProgressToast');
+                const thumb = document.getElementById('uploadThumb');
+                const title = document.getElementById('uploadTitle');
+                const percent = document.getElementById('uploadPercent');
+                const bar = document.getElementById('uploadBar');
+
+                toast.style.display = 'block';
+                title.textContent = titleText;
+                bar.style.width = '0%';
+                percent.textContent = '0%';
+
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        thumb.src = e.target.result;
+                        thumb.style.display = 'block';
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    thumb.style.display = 'none';
+                }
+
+                const ref = storage.ref(storagePath);
+                const task = ref.put(file);
+
+                task.on('state_changed', 
+                    snapshot => {
+                        const p = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        bar.style.width = p + '%';
+                        percent.textContent = Math.round(p) + '%';
+                    }, 
+                    error => {
+                        setTimeout(() => toast.style.display = 'none', 2000);
+                        reject(error);
+                    }, 
+                    () => {
+                        task.snapshot.ref.getDownloadURL().then(url => {
+                            setTimeout(() => toast.style.display = 'none', 1000);
+                            resolve({ url, snapshot: task.snapshot });
+                        });
+                    }
+                );
+            });
+        }
+
         function handleUpload() {
             const file = fileInput.files[0];
             if (!file) return;
@@ -519,17 +1033,15 @@
             setStatus("Preparing upload...", "info");
 
             const fileName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
-            const ref = storage.ref('panelsyncclassic/' + fileName);
+            const storagePath = `panelsyncclassic/${currentDept}/slides/${fileName}`;
 
-            ref.put(file).then(snapshot => {
-                setStatus("Synchronizing database...", "info");
-                return snapshot.ref.getDownloadURL();
-            }).then(url => {
+            uploadWithProgressUI(file, storagePath, "Uploading Slide")
+            .then(({ url }) => {
                 const isImage = file.type.startsWith('image/');
                 const newItem = {
                     url: url,
                     type: isImage ? 'image' : 'video',
-                    storagePath: 'panelsyncclassic/' + fileName
+                    storagePath: storagePath
                 };
 
                 if (isImage) {
@@ -541,9 +1053,11 @@
                     newOrder = Math.max(...mediaArray.map(item => item.order)) + 1;
                 }
                 newItem.order = newOrder;
+                newItem.useBackground = false;
+                newItem.useMusic = false;
                 const newId = 'slide_' + Date.now();
 
-                return db.ref('media/' + newId).set(newItem);
+                return db.ref(`dept/${currentDept}/media/${newId}`).set(newItem);
             }).then(() => {
                 setStatus("Content live on displays!", "success");
                 fileInput.value = '';
@@ -597,6 +1111,22 @@
                     durationHtml = `<p style="font-size:0.8rem; color:var(--text-gray); margin-top:5px;"><i class="fas fa-play"></i> Plays full length</p>`;
                 }
 
+                let backgroundControls = `
+                    <div style="display:flex; align-items:center; gap:5px; margin-top:5px;">
+                        <input type="checkbox" id="bg_${item.id}" ${item.useBackground ? 'checked' : ''} 
+                               onchange="updateBackground('${item.id}', this.checked)">
+                        <label for="bg_${item.id}" style="font-size:0.75rem; color:var(--text-gray);">Use Background</label>
+                    </div>
+                `;
+
+                let musicControls = `
+                    <div style="display:flex; align-items:center; gap:5px; margin-top:5px;">
+                        <input type="checkbox" id="music_${item.id}" ${item.useMusic ? 'checked' : ''} 
+                               onchange="updateMusic('${item.id}', this.checked)">
+                        <label for="music_${item.id}" style="font-size:0.75rem; color:var(--text-gray);">Use Music</label>
+                    </div>
+                `;
+
                 let orderControls = `
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding: 0 10px; padding-top:10px;">
                         <button class="btn-sm btn-update" onclick="moveUp(${index})" ${index === 0 ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="Move Up"><i class="fas fa-arrow-up"></i></button>
@@ -618,6 +1148,8 @@
                     </div>
                     <div class="media-content">
                         ${durationHtml}
+                        ${backgroundControls}
+                        ${musicControls}
                     </div>
                     <div class="actions">
                         ${editBtnHtml}
@@ -635,10 +1167,10 @@
             const previous = mediaArray[index - 1];
             
             const updates = {};
-            updates[current.id + '/order'] = previous.order;
-            updates[previous.id + '/order'] = current.order;
+            updates[`dept/${currentDept}/media/${current.id}/order`] = previous.order;
+            updates[`dept/${currentDept}/media/${previous.id}/order`] = current.order;
             
-            db.ref('media').update(updates);
+            db.ref().update(updates);
         }
 
         function moveDown(index) {
@@ -647,32 +1179,290 @@
             const next = mediaArray[index + 1];
             
             const updates = {};
-            updates[current.id + '/order'] = next.order;
-            updates[next.id + '/order'] = current.order;
+            updates[`dept/${currentDept}/media/${current.id}/order`] = next.order;
+            updates[`dept/${currentDept}/media/${next.id}/order`] = current.order;
             
-            db.ref('media').update(updates);
+            db.ref().update(updates);
         }
 
         // CRUD: Update
         function updateDuration(id, newVal) {
             const val = parseInt(newVal);
             if (val > 0) {
-                db.ref('media/' + id + '/duration').set(val);
+                db.ref(`dept/${currentDept}/media/${id}/duration`).set(val);
             }
+        }
+
+        function updateBackground(id, checked) {
+            db.ref(`dept/${currentDept}/media/${id}/useBackground`).set(checked);
+        }
+
+        function updateMusic(id, checked) {
+            db.ref(`dept/${currentDept}/media/${id}/useMusic`).set(checked);
+        }
+
+        function showLoading(text) {
+            document.getElementById('loadingText').innerText = text;
+            document.getElementById('loadingOverlay').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
         }
 
         // CRUD: Delete
         function deleteItem(id) {
             if (confirm("Permanently remove this item from display?")) {
                 const item = mediaMap[id];
+                showLoading("Deleting slide...");
                 
-                // Keep DB clean - remove from storage too if path exists
+                let p = Promise.resolve();
                 if (item && item.storagePath) {
-                    storage.ref(item.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
+                    p = storage.ref(item.storagePath).delete().catch(e => console.warn("Storage deletion error", e));
                 }
 
-                db.ref('media/' + id).remove();
+                p.then(() => {
+                    return db.ref(`dept/${currentDept}/media/${id}`).remove();
+                }).then(() => {
+                    hideLoading();
+                }).catch(e => {
+                    hideLoading();
+                    alert("Error deleting: " + e.message);
+                });
             }
+        }
+
+        // ==========================================
+        // BACKGROUND MANAGEMENT
+        // ==========================================
+        function renderBackgrounds() {
+            const grid = document.getElementById('backgroundGrid');
+            const bgUploadArea = document.getElementById('bgUploadArea');
+            const bgInput = document.getElementById('bgFileInput');
+            grid.innerHTML = '';
+
+            if (!currentBackground || !currentBackground.url) {
+                grid.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:var(--text-gray); font-size:0.8rem; padding:1rem;">No background image uploaded</p>';
+                bgUploadArea.removeAttribute('disabled');
+                bgUploadArea.style.opacity = '1';
+                bgUploadArea.style.cursor = 'pointer';
+                return;
+            }
+
+            bgUploadArea.setAttribute('disabled', 'true');
+            bgUploadArea.style.opacity = '0.5';
+            bgUploadArea.style.cursor = 'not-allowed';
+
+            const div = document.createElement('div');
+            div.style.cssText = `
+                position: relative;
+                width: 100px;
+                height: 100px;
+                border-radius: 8px;
+                overflow: hidden;
+                border: 1px solid var(--border);
+                background: #f8fafc;
+            `;
+
+            div.innerHTML = `
+                <img src="${currentBackground.url}" style="width:100%; height:100%; object-fit:cover;" alt="Background">
+                <button onclick="deleteBackground()" 
+                        style="position:absolute; top:2px; right:2px; background:#ef4444; color:white; border:none; border-radius:4px; width:20px; height:20px; font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center;">×</button>
+            `;
+            grid.appendChild(div);
+        }
+
+        function deleteBackground() {
+            if (confirm("Delete this background image?")) {
+                showLoading("Deleting background...");
+                let p = Promise.resolve();
+                if (currentBackground && currentBackground.storagePath) {
+                    p = storage.ref(currentBackground.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
+                }
+                
+                p.then(() => {
+                    return db.ref(`dept/${currentDept}/background`).remove();
+                }).then(() => {
+                    hideLoading();
+                }).catch(e => {
+                    hideLoading();
+                    alert("Error deleting background: " + e.message);
+                });
+            }
+        }
+
+        // ==========================================
+        // MUSIC MANAGEMENT
+        // ==========================================
+        function renderMusic() {
+            const grid = document.getElementById('musicGrid');
+            const musicUploadArea = document.getElementById('musicUploadArea');
+            const musicInput = document.getElementById('musicFileInput');
+            grid.innerHTML = '';
+
+            if (!currentMusicObj || !currentMusicObj.url) {
+                grid.innerHTML = '<p style="text-align:center; color:var(--text-gray); font-size:0.8rem; padding:1rem;">No music file uploaded</p>';
+                musicUploadArea.removeAttribute('disabled');
+                musicUploadArea.style.opacity = '1';
+                musicUploadArea.style.cursor = 'pointer';
+                return;
+            }
+
+            musicUploadArea.setAttribute('disabled', 'true');
+            musicUploadArea.style.opacity = '0.5';
+            musicUploadArea.style.cursor = 'not-allowed';
+
+            const div = document.createElement('div');
+            div.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+            `;
+
+            const fileName = currentMusicObj.name || currentMusicObj.storagePath.split('/').pop();
+            div.innerHTML = `
+                <i class="fas fa-music" style="color: var(--primary); font-size: 1.2rem;"></i>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${fileName}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-gray);">Background Music</div>
+                </div>
+                <button onclick="deleteMusic()" 
+                        style="background:#ef4444; color:white; border:none; border-radius:4px; width:24px; height:24px; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center;">×</button>
+            `;
+            grid.appendChild(div);
+        }
+
+        function deleteMusic() {
+            if (confirm("Delete this music file?")) {
+                showLoading("Deleting music...");
+                let p = Promise.resolve();
+                if (currentMusicObj && currentMusicObj.storagePath) {
+                    p = storage.ref(currentMusicObj.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
+                }
+                
+                p.then(() => {
+                    return db.ref(`dept/${currentDept}/music`).remove();
+                }).then(() => {
+                    hideLoading();
+                }).catch(e => {
+                    hideLoading();
+                    alert("Error deleting music: " + e.message);
+                });
+            }
+        }
+
+        // ==========================================
+        // FILE UPLOAD HANDLERS
+        // ==========================================
+        document.getElementById('bgFileInput').addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const MB = 10 * 1024 * 1024;
+            if (file.size > MB) {
+                setStatus("File exceeds 10MB limit.", "error");
+                document.getElementById('bgFileInput').value = '';
+                return;
+            }
+
+            if (!file.type.startsWith('image/')) {
+                setStatus("Only image files are allowed for backgrounds.", "error");
+                document.getElementById('bgFileInput').value = '';
+                return;
+            }
+
+            document.getElementById('bgPreview').style.display = 'block';
+            document.getElementById('bgFilename').innerText = file.name;
+            const reader = new FileReader();
+            reader.onload = ev => document.getElementById('bgThumbPreview').src = ev.target.result;
+            reader.readAsDataURL(file);
+            
+            document.getElementById('bgUploadBtn').style.display = 'block';
+            document.getElementById('bgUploadBtn').disabled = false;
+        });
+
+        document.getElementById('musicFileInput').addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const MB = 10 * 1024 * 1024;
+            if (file.size > MB) {
+                setStatus("File exceeds 10MB limit.", "error");
+                document.getElementById('musicFileInput').value = '';
+                return;
+            }
+
+            if (!file.type.startsWith('audio/')) {
+                setStatus("Only audio files are allowed for music.", "error");
+                document.getElementById('musicFileInput').value = '';
+                return;
+            }
+
+            document.getElementById('musicPreview').style.display = 'block';
+            document.getElementById('musicFilename').innerText = file.name;
+            document.getElementById('musicUploadBtn').style.display = 'block';
+            document.getElementById('musicUploadBtn').disabled = false;
+        });
+
+        function handleBackgroundUpload() {
+            const file = document.getElementById('bgFileInput').files[0];
+            if (!file) return;
+
+            document.getElementById('bgUploadBtn').disabled = true;
+            setStatus("Uploading background image...", "info");
+
+            const fileName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+            const storagePath = `panelsyncclassic/${currentDept}/backgrounds/${fileName}`;
+
+            uploadWithProgressUI(file, storagePath, "Uploading Background")
+            .then(({ url }) => {
+                const newItem = {
+                    url: url,
+                    storagePath: storagePath
+                };
+                return db.ref(`dept/${currentDept}/background`).set(newItem);
+            }).then(() => {
+                setStatus("Background image uploaded!", "success");
+                document.getElementById('bgFileInput').value = '';
+                document.getElementById('bgPreview').style.display = 'none';
+                document.getElementById('bgUploadBtn').style.display = 'none';
+            }).catch(err => {
+                setStatus(err.message, "error");
+                document.getElementById('bgUploadBtn').disabled = false;
+            });
+        }
+
+        function handleMusicUpload() {
+            const file = document.getElementById('musicFileInput').files[0];
+            if (!file) return;
+
+            document.getElementById('musicUploadBtn').disabled = true;
+            setStatus("Uploading music file...", "info");
+
+            const fileName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+            const storagePath = `panelsyncclassic/${currentDept}/music/${fileName}`;
+
+            uploadWithProgressUI(file, storagePath, "Uploading Music")
+            .then(({ url }) => {
+                const newItem = {
+                    url: url,
+                    storagePath: storagePath,
+                    name: file.name
+                };
+                return db.ref(`dept/${currentDept}/music`).set(newItem);
+            }).then(() => {
+                setStatus("Music file uploaded!", "success");
+                document.getElementById('musicFileInput').value = '';
+                document.getElementById('musicPreview').style.display = 'none';
+                document.getElementById('musicUploadBtn').style.display = 'none';
+            }).catch(err => {
+                setStatus(err.message, "error");
+                document.getElementById('musicUploadBtn').disabled = false;
+            });
         }
 
         // --- TEXT SLIDE HANDLERS ---
@@ -701,10 +1491,12 @@
                 bgColor: bgColor,
                 textColor: textColor,
                 duration: duration,
-                order: newOrder
+                order: newOrder,
+                useBackground: false,
+                useMusic: false
             };
 
-            db.ref('media/' + newId).set(newItem)
+            db.ref(`dept/${currentDept}/media/${newId}`).set(newItem)
                 .then(() => {
                     setStatus("Text slide added successfully!", "success");
                     document.getElementById('textNewContent').value = '';
@@ -739,7 +1531,7 @@
                 return;
             }
 
-            db.ref('media/' + id).set(item).then(() => {
+            db.ref(`dept/${currentDept}/media/${id}`).set(item).then(() => {
                 document.getElementById('textEditModal').style.display = 'none';
             });
         }
