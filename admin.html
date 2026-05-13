@@ -274,6 +274,10 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
 </head>
 <body>
     <!-- Dept Selection Modal -->
@@ -316,6 +320,25 @@
             </div>
 
             <button class="primary-btn" onclick="bootstrapFirstDepartment()">Initialize System</button>
+        </div>
+    </div>
+
+    <!-- PPT/PPTX Helper Modal -->
+    <div class="modal-overlay" id="pptHelperModal">
+        <div class="modal">
+            <div class="modal-header">PPT/PPTX Support</div>
+            <p style="color:var(--text-gray); margin-bottom: 1.5rem;">PowerPoint files are not directly supported for TV compatibility.</p>
+            <div style="background:var(--bg); padding:1rem; border-radius:8px; margin-bottom:1rem;">
+                <p><strong>Step 1:</strong> Convert your PPT/PPTX file to PDF.</p>
+                <button class="btn-sm btn-update" style="width:100%; margin-top:0.5rem;" onclick="window.open('https://www.ilovepdf.com/powerpoint_to_pdf', '_blank')">Open Converter</button>
+            </div>
+            <div style="background:var(--bg); padding:1rem; border-radius:8px; margin-bottom:1rem;">
+                <p><strong>Step 2:</strong> Upload the converted PDF.</p>
+                <button class="primary-btn" style="margin-top:0.5rem; padding: 0.5rem;" onclick="document.getElementById('fileInput').click(); document.getElementById('pptHelperModal').style.display='none'">Upload Converted PDF</button>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-sm btn-update" onclick="document.getElementById('pptHelperModal').style.display='none'">Close</button>
+            </div>
         </div>
     </div>
 
@@ -408,12 +431,11 @@
             <div class="card">
                 <div class="card-title"><i class="fas fa-cloud-upload-alt"></i> New Content</div>
                 
-                <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-                    <i class="fas fa-file-import"></i>
-                    <p style="margin:0; font-weight:600;">Click to upload</p>
-                    <p style="margin:5px 0 0; font-size:0.75rem; color:var(--text-gray);">Images or Videos (Max 10MB)</p>
+                <div style="display:flex; flex-direction: column; gap:10px;">
+                    <button class="primary-btn" style="margin-top:0; padding:1rem; font-size:1.1rem;" onclick="document.getElementById('fileInput').click()"><i class="fas fa-file-import"></i> Select Slide File</button>
+                    <button class="btn-sm btn-update" style="padding:0.75rem;" onclick="document.getElementById('pptHelperModal').style.display='flex'"><i class="fas fa-question-circle"></i> PPT/PPTX Helper</button>
                 </div>
-                <input type="file" id="fileInput" hidden accept="image/*,video/*">
+                <input type="file" id="fileInput" hidden accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf">
 
                 <div id="imageControls" style="display: none;">
                     <div class="form-group">
@@ -554,6 +576,87 @@
         const auth = firebase.auth();
         const db = firebase.database();
         const storage = firebase.storage();
+
+        // ==========================================
+        // RATE LIMITING & SECURITY
+        // ==========================================
+        function checkRateLimit(actionType, maxPerMin) {
+            const email = sessionStorage.getItem('adminEmail');
+            if (!email) return false;
+            
+            const key = `rl_${email}_${actionType}`;
+            const now = Date.now();
+            let records = JSON.parse(localStorage.getItem(key) || '[]');
+            
+            records = records.filter(time => now - time < 60000);
+            
+            if (records.length >= maxPerMin) {
+                alert(`Rate limit exceeded for ${actionType}. Max ${maxPerMin} per minute.`);
+                return false;
+            }
+            
+            records.push(now);
+            localStorage.setItem(key, JSON.stringify(records));
+            return true;
+        }
+
+        const ALLOWED_TYPES = {
+            slides: {
+                types: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'application/pdf'],
+                exts: ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'pdf']
+            },
+            background: {
+                types: ['image/jpeg', 'image/png', 'image/webp'],
+                exts: ['jpg', 'jpeg', 'png', 'webp']
+            },
+            music: {
+                types: ['audio/mpeg', 'audio/wav', 'audio/ogg'],
+                exts: ['mp3', 'wav', 'ogg']
+            }
+        };
+
+        const BLOCKED_EXTS = ['zip', 'rar', '7z', 'tar', 'gz', 'exe', 'apk', 'js', 'html', 'php', 'svg', 'iso', 'dll', 'pptm', 'docm', 'bat', 'cmd'];
+
+        function validateFile(file, category, maxSizeMB) {
+            if (!file) return false;
+
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (BLOCKED_EXTS.includes(ext)) {
+                setStatus("Security Error: Blocked file extension.", "error");
+                return false;
+            }
+
+            const catRules = ALLOWED_TYPES[category];
+            if (!catRules.exts.includes(ext) || !catRules.types.includes(file.type)) {
+                setStatus(`Security Error: Invalid file format for ${category}. Allowed: ${catRules.exts.join(', ')}`, "error");
+                return false;
+            }
+
+            const sizeLimit = maxSizeMB * 1024 * 1024;
+            if (file.size > sizeLimit) {
+                setStatus(`File too large. Max size is ${maxSizeMB}MB.`, "error");
+                return false;
+            }
+            return true;
+        }
+
+        function checkUploadLimits(category, addCount = 1) {
+            if (category === 'slides' && mediaArray.length + addCount > 100) {
+                setStatus("Limit Reached: Max 100 slides per department.", "error");
+                return false;
+            }
+            if (category === 'background' && currentBackground && currentBackground.url) {
+                setStatus("Limit Reached: Max 1 background allowed.", "error");
+                return false;
+            }
+            if (category === 'music' && currentMusicObj && currentMusicObj.url) {
+                setStatus("Limit Reached: Max 1 music file allowed.", "error");
+                return false;
+            }
+            return true;
+        }
+
+        let lastDeptAction = 0;
 
         // ==========================================
         // DEPARTMENT MANAGEMENT
@@ -707,6 +810,8 @@
         }
 
         function saveTransition() {
+            if (!checkRateLimit('writes', 20)) return;
+
             const val = document.getElementById('transitionSelect').value;
             db.ref(`dept/${currentDept}/settings/transition`).set(val).then(() => {
                 setStatus("Transition setting updated!", "success");
@@ -732,11 +837,23 @@
         }
 
         function createDepartment() {
+            if (Date.now() - lastDeptAction < 2000) {
+                alert("Please wait before performing this action again.");
+                return;
+            }
+            lastDeptAction = Date.now();
+            if (!checkRateLimit('writes', 20)) return;
+
             const name = document.getElementById('newDeptName').value.trim().toLowerCase();
             const email = document.getElementById('newDeptEmail').value.trim();
 
             if (!name || !email) {
                 alert("Please fill all fields");
+                return;
+            }
+
+            if (!/^[a-z0-9]{1,20}$/.test(name)) {
+                alert("Department name must be lowercase alphanumeric only, no spaces, no symbols, max 20 chars.");
                 return;
             }
 
@@ -762,11 +879,23 @@
         }
 
         function bootstrapFirstDepartment() {
+            if (Date.now() - lastDeptAction < 2000) {
+                alert("Please wait before performing this action again.");
+                return;
+            }
+            lastDeptAction = Date.now();
+            if (!checkRateLimit('writes', 20)) return;
+
             const name = document.getElementById('bootDeptName').value.trim().toLowerCase();
             const email = document.getElementById('bootDeptEmail').value.trim();
 
             if (!name || !email) {
                 alert("Please fill all fields");
+                return;
+            }
+
+            if (!/^[a-z0-9]{1,20}$/.test(name)) {
+                alert("Department name must be lowercase alphanumeric only, no spaces, no symbols, max 20 chars.");
                 return;
             }
 
@@ -882,6 +1011,8 @@
         }
 
         function addDeptUser() {
+            if (!checkRateLimit('writes', 20)) return;
+
             const email = document.getElementById('umNewEmail').value.trim();
             const roleLevel = parseInt(document.getElementById('umNewRole').value);
             
@@ -914,6 +1045,7 @@
 
         function deleteDeptUser(emailKey) {
             if (!selectedUmDept) return;
+            if (!checkRateLimit('deletes', 10)) return;
             
             const currentUserEmailKey = emailToKey(sessionStorage.getItem('adminEmail') || '');
             if (emailKey === currentUserEmailKey) {
@@ -951,14 +1083,21 @@
         }
 
         // Handle File Selection
-        fileInput.addEventListener('change', e => {
+        fileInput.addEventListener('change', async e => {
             const file = e.target.files[0];
             if (!file) return;
 
-            // Validation
-            const MB = 10 * 1024 * 1024;
-            if (file.size > MB) {
-                setStatus("File exceeds 10MB limit.", "error");
+            let maxSize = 10; // Default images
+            if (file.type === 'video/mp4') maxSize = 80;
+            if (file.type === 'application/pdf') maxSize = 25;
+
+            if (!validateFile(file, 'slides', maxSize)) {
+                fileInput.value = '';
+                return;
+            }
+
+            // For PDF we might add many slides, but let's check base limit first
+            if (!checkUploadLimits('slides', 1)) {
                 fileInput.value = '';
                 return;
             }
@@ -969,11 +1108,10 @@
 
             if (file.type.startsWith('image/')) {
                 imageControls.style.display = 'block';
-            } else if (file.type.startsWith('video/')) {
+            } else if (file.type === 'video/mp4') {
                 videoControls.style.display = 'block';
-            } else {
-                setStatus("Unsupported file format.", "error");
-                uploadBtn.disabled = true;
+            } else if (file.type === 'application/pdf') {
+                imageControls.style.display = 'block'; // PDF becomes image slides
             }
         });
 
@@ -1025,49 +1163,114 @@
             });
         }
 
-        function handleUpload() {
+        async function handleUpload() {
             const file = fileInput.files[0];
             if (!file) return;
+            if (!checkRateLimit('uploads', 5)) return;
+            if (!checkRateLimit('writes', 20)) return;
 
             uploadBtn.disabled = true;
             setStatus("Preparing upload...", "info");
 
-            const fileName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
-            const storagePath = `panelsyncclassic/${currentDept}/slides/${fileName}`;
+            const isPdf = file.type === 'application/pdf';
+            const duration = parseInt(document.getElementById('durationInput').value) || 5;
 
-            uploadWithProgressUI(file, storagePath, "Uploading Slide")
-            .then(({ url }) => {
-                const isImage = file.type.startsWith('image/');
-                const newItem = {
-                    url: url,
-                    type: isImage ? 'image' : 'video',
-                    storagePath: storagePath
-                };
+            try {
+                if (isPdf) {
+                    await handlePdfUpload(file, duration);
+                } else {
+                    const isImage = file.type.startsWith('image/');
+                    const randomSuffix = Math.random().toString(36).substring(2, 8);
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    const sanitizedName = `${Date.now()}_${randomSuffix}.${ext}`;
+                    const storagePath = `panelsyncclassic/${currentDept}/slides/${sanitizedName}`;
 
-                if (isImage) {
-                    newItem.duration = parseInt(document.getElementById('durationInput').value) || 5;
+                    const { url } = await uploadWithProgressUI(file, storagePath, "Uploading Slide");
+                    
+                    const newItem = {
+                        url: url,
+                        type: isImage ? 'image' : 'video',
+                        storagePath: storagePath,
+                        useBackground: false,
+                        useMusic: false
+                    };
+
+                    if (isImage) {
+                        newItem.duration = duration;
+                    }
+
+                    let newOrder = 1;
+                    if (mediaArray.length > 0) {
+                        newOrder = Math.max(...mediaArray.map(item => item.order)) + 1;
+                    }
+                    newItem.order = newOrder;
+                    const newId = 'slide_' + Date.now();
+
+                    await db.ref(`dept/${currentDept}/media/${newId}`).set(newItem);
                 }
 
-                let newOrder = 1;
-                if (mediaArray.length > 0) {
-                    newOrder = Math.max(...mediaArray.map(item => item.order)) + 1;
-                }
-                newItem.order = newOrder;
-                newItem.useBackground = false;
-                newItem.useMusic = false;
-                const newId = 'slide_' + Date.now();
-
-                return db.ref(`dept/${currentDept}/media/${newId}`).set(newItem);
-            }).then(() => {
                 setStatus("Content live on displays!", "success");
                 fileInput.value = '';
                 uploadBtn.disabled = true;
                 imageControls.style.display = 'none';
                 videoControls.style.display = 'none';
-            }).catch(err => {
+            } catch (err) {
                 setStatus(err.message, "error");
                 uploadBtn.disabled = false;
-            });
+            }
+        }
+
+        async function handlePdfUpload(file, duration) {
+            showLoading("Processing PDF locally...");
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+                const numPages = pdf.numPages;
+                
+                if (!checkUploadLimits('slides', numPages)) {
+                    throw new Error(`Uploading this PDF exceeds the 100 slides limit. (Adding ${numPages} slides)`);
+                }
+
+                hideLoading();
+                
+                for (let i = 1; i <= numPages; i++) {
+                    setStatus(`Converting page ${i} of ${numPages}...`, "info");
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({scale: 2.0});
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    
+                    await page.render({canvasContext: context, viewport: viewport}).promise;
+                    
+                    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+                    const randomSuffix = Math.random().toString(36).substring(2, 8);
+                    const blobFile = new File([blob], `page_${i}_${randomSuffix}.jpg`, {type: 'image/jpeg'});
+                    
+                    const storagePath = `panelsyncclassic/${currentDept}/slides/${Date.now()}_pdf_${i}_${randomSuffix}.jpg`;
+                    
+                    const { url } = await uploadWithProgressUI(blobFile, storagePath, `Uploading Page ${i}/${numPages}`);
+                    
+                    let newOrder = 1;
+                    if (mediaArray.length > 0) newOrder = Math.max(...mediaArray.map(item => item.order)) + 1;
+                    
+                    const newItem = {
+                        url: url,
+                        type: 'image',
+                        storagePath: storagePath,
+                        duration: duration,
+                        order: newOrder,
+                        useBackground: false,
+                        useMusic: false
+                    };
+                    const newId = 'slide_' + Date.now() + '_' + i;
+                    await db.ref(`dept/${currentDept}/media/${newId}`).set(newItem);
+                }
+            } catch (error) {
+                hideLoading();
+                throw error;
+            }
         }
 
         // CRUD: Read
@@ -1211,24 +1414,22 @@
         }
 
         // CRUD: Delete
-        function deleteItem(id) {
+        async function deleteItem(id) {
+            if (!checkRateLimit('deletes', 10)) return;
             if (confirm("Permanently remove this item from display?")) {
                 const item = mediaMap[id];
                 showLoading("Deleting slide...");
                 
-                let p = Promise.resolve();
-                if (item && item.storagePath) {
-                    p = storage.ref(item.storagePath).delete().catch(e => console.warn("Storage deletion error", e));
-                }
-
-                p.then(() => {
-                    return db.ref(`dept/${currentDept}/media/${id}`).remove();
-                }).then(() => {
+                try {
+                    if (item && item.storagePath) {
+                        await storage.ref(item.storagePath).delete().catch(e => console.warn("Storage deletion error", e));
+                    }
+                    await db.ref(`dept/${currentDept}/media/${id}`).remove();
                     hideLoading();
-                }).catch(e => {
+                } catch(e) {
                     hideLoading();
                     alert("Error deleting: " + e.message);
-                });
+                }
             }
         }
 
@@ -1272,22 +1473,20 @@
             grid.appendChild(div);
         }
 
-        function deleteBackground() {
+        async function deleteBackground() {
+            if (!checkRateLimit('deletes', 10)) return;
             if (confirm("Delete this background image?")) {
                 showLoading("Deleting background...");
-                let p = Promise.resolve();
-                if (currentBackground && currentBackground.storagePath) {
-                    p = storage.ref(currentBackground.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
-                }
-                
-                p.then(() => {
-                    return db.ref(`dept/${currentDept}/background`).remove();
-                }).then(() => {
+                try {
+                    if (currentBackground && currentBackground.storagePath) {
+                        await storage.ref(currentBackground.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
+                    }
+                    await db.ref(`dept/${currentDept}/background`).remove();
                     hideLoading();
-                }).catch(e => {
+                } catch(e) {
                     hideLoading();
                     alert("Error deleting background: " + e.message);
-                });
+                }
             }
         }
 
@@ -1336,22 +1535,20 @@
             grid.appendChild(div);
         }
 
-        function deleteMusic() {
+        async function deleteMusic() {
+            if (!checkRateLimit('deletes', 10)) return;
             if (confirm("Delete this music file?")) {
                 showLoading("Deleting music...");
-                let p = Promise.resolve();
-                if (currentMusicObj && currentMusicObj.storagePath) {
-                    p = storage.ref(currentMusicObj.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
-                }
-                
-                p.then(() => {
-                    return db.ref(`dept/${currentDept}/music`).remove();
-                }).then(() => {
+                try {
+                    if (currentMusicObj && currentMusicObj.storagePath) {
+                        await storage.ref(currentMusicObj.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
+                    }
+                    await db.ref(`dept/${currentDept}/music`).remove();
                     hideLoading();
-                }).catch(e => {
+                } catch(e) {
                     hideLoading();
                     alert("Error deleting music: " + e.message);
-                });
+                }
             }
         }
 
@@ -1362,15 +1559,11 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            const MB = 10 * 1024 * 1024;
-            if (file.size > MB) {
-                setStatus("File exceeds 10MB limit.", "error");
+            if (!validateFile(file, 'background', 10)) {
                 document.getElementById('bgFileInput').value = '';
                 return;
             }
-
-            if (!file.type.startsWith('image/')) {
-                setStatus("Only image files are allowed for backgrounds.", "error");
+            if (!checkUploadLimits('background')) {
                 document.getElementById('bgFileInput').value = '';
                 return;
             }
@@ -1389,84 +1582,84 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            const MB = 10 * 1024 * 1024;
-            if (file.size > MB) {
-                setStatus("File exceeds 10MB limit.", "error");
+            if (!validateFile(file, 'music', 15)) {
                 document.getElementById('musicFileInput').value = '';
                 return;
             }
-
-            if (!file.type.startsWith('audio/')) {
-                setStatus("Only audio files are allowed for music.", "error");
+            if (!checkUploadLimits('music')) {
                 document.getElementById('musicFileInput').value = '';
                 return;
             }
 
             document.getElementById('musicPreview').style.display = 'block';
-            document.getElementById('musicFilename').innerText = file.name;
+            document.getElementById('musicFilename').innerHTML = `<i class="fas fa-file-audio" style="color:var(--primary);"></i> ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`;
             document.getElementById('musicUploadBtn').style.display = 'block';
             document.getElementById('musicUploadBtn').disabled = false;
         });
 
-        function handleBackgroundUpload() {
+        async function handleBackgroundUpload() {
             const file = document.getElementById('bgFileInput').files[0];
             if (!file) return;
+            if (!checkRateLimit('uploads', 5)) return;
+            if (!checkRateLimit('writes', 20)) return;
 
             document.getElementById('bgUploadBtn').disabled = true;
             setStatus("Uploading background image...", "info");
 
-            const fileName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
-            const storagePath = `panelsyncclassic/${currentDept}/backgrounds/${fileName}`;
+            const randomSuffix = Math.random().toString(36).substring(2, 8);
+            const ext = file.name.split('.').pop().toLowerCase();
+            const sanitizedName = `${Date.now()}_bg_${randomSuffix}.${ext}`;
+            const storagePath = `panelsyncclassic/${currentDept}/backgrounds/${sanitizedName}`;
 
-            uploadWithProgressUI(file, storagePath, "Uploading Background")
-            .then(({ url }) => {
-                const newItem = {
-                    url: url,
-                    storagePath: storagePath
-                };
-                return db.ref(`dept/${currentDept}/background`).set(newItem);
-            }).then(() => {
+            try {
+                const { url } = await uploadWithProgressUI(file, storagePath, "Uploading Background");
+                const newItem = { url: url, storagePath: storagePath };
+                await db.ref(`dept/${currentDept}/background`).set(newItem);
+                
                 setStatus("Background image uploaded!", "success");
                 document.getElementById('bgFileInput').value = '';
                 document.getElementById('bgPreview').style.display = 'none';
                 document.getElementById('bgUploadBtn').style.display = 'none';
-            }).catch(err => {
+            } catch (err) {
                 setStatus(err.message, "error");
                 document.getElementById('bgUploadBtn').disabled = false;
-            });
+            }
         }
 
-        function handleMusicUpload() {
+        async function handleMusicUpload() {
             const file = document.getElementById('musicFileInput').files[0];
             if (!file) return;
+            if (!checkRateLimit('uploads', 5)) return;
+            if (!checkRateLimit('writes', 20)) return;
 
             document.getElementById('musicUploadBtn').disabled = true;
             setStatus("Uploading music file...", "info");
 
-            const fileName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
-            const storagePath = `panelsyncclassic/${currentDept}/music/${fileName}`;
+            const randomSuffix = Math.random().toString(36).substring(2, 8);
+            const ext = file.name.split('.').pop().toLowerCase();
+            const sanitizedName = `${Date.now()}_music_${randomSuffix}.${ext}`;
+            const storagePath = `panelsyncclassic/${currentDept}/music/${sanitizedName}`;
 
-            uploadWithProgressUI(file, storagePath, "Uploading Music")
-            .then(({ url }) => {
-                const newItem = {
-                    url: url,
-                    storagePath: storagePath,
-                    name: file.name
-                };
-                return db.ref(`dept/${currentDept}/music`).set(newItem);
-            }).then(() => {
+            try {
+                const { url } = await uploadWithProgressUI(file, storagePath, "Uploading Music");
+                const newItem = { url: url, storagePath: storagePath, name: file.name };
+                await db.ref(`dept/${currentDept}/music`).set(newItem);
+                
                 setStatus("Music file uploaded!", "success");
                 document.getElementById('musicFileInput').value = '';
                 document.getElementById('musicPreview').style.display = 'none';
                 document.getElementById('musicUploadBtn').style.display = 'none';
-            }).catch(err => {
+            } catch (err) {
                 setStatus(err.message, "error");
                 document.getElementById('musicUploadBtn').disabled = false;
-            });
+            }
         }
 
         // --- TEXT SLIDE HANDLERS ---
         function handleAddText() {
+            if (!checkUploadLimits('slides', 1)) return;
+            if (!checkRateLimit('writes', 20)) return;
+
             const content = document.getElementById('textNewContent').value.trim();
             const bgColor = document.getElementById('textNewBg').value;
             const textColor = document.getElementById('textNewColor').value;
@@ -1518,6 +1711,8 @@
         }
 
         function saveTextEdit() {
+            if (!checkRateLimit('writes', 20)) return;
+
             const id = document.getElementById('editIndex').value;
             const item = mediaMap[id];
             
