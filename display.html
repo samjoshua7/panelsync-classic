@@ -136,9 +136,11 @@
       font-size: 1.2rem;
       transition: background 0.3s;
     }
+
     #fullscreenBtn:hover {
       background: rgba(0, 0, 0, 0.8);
     }
+
     #audioUnlockBtn {
       position: fixed;
       top: 50%;
@@ -153,9 +155,10 @@
       font-size: 1.5rem;
       font-weight: bold;
       cursor: pointer;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
       display: none;
     }
+
     #audioUnlockBtn:hover {
       background: #4338ca;
     }
@@ -286,7 +289,8 @@
     var timer = null;
     // var nameList = ["II CSE C"];
     // var nameList = ["Sam Joshua", "Team PanelSync", "II CSE C"];
-    var nameList = ["Sam Joshua", "II CSE C", "Sam Joshua", "Ramakrishna", "Vignesh"];
+    // var nameList = ["Sam Joshua", "II CSE C", "Sam Joshua", "Ramakrishna", "Sam Joshua", "Vignesh"];
+    var nameList = ["Sam Joshua", "II CSE C 2025-26", "Sam Joshua", "Ramakrishna", "Sam Joshua"];
     var nameIndex = 0;
 
     var transitionType = 'cut';
@@ -483,7 +487,7 @@
         if (audioElement.src !== currentMusicObj.url) {
           audioElement.src = currentMusicObj.url;
         }
-        
+
         if (audioUnlocked) {
           var playPromise = audioElement.play();
           if (playPromise !== undefined) {
@@ -504,20 +508,20 @@
     function unlockAudio() {
       audioUnlocked = true;
       document.getElementById('audioUnlockBtn').style.display = 'none';
-      
+
       var activeLayerObj = getLayer(activeLayer);
       if (activeLayerObj.vidEl.classList.contains('active')) {
         activeLayerObj.vidEl.muted = false;
       }
-      
+
       if (!audioElement) {
         audioElement = document.getElementById('backgroundAudio');
       }
-      
+
       if (audioElement.src) {
         var playPromise = audioElement.play();
         if (playPromise !== undefined) {
-          playPromise.catch(function(e) { console.warn("Audio play failed again:", e); });
+          playPromise.catch(function (e) { console.warn("Audio play failed again:", e); });
         }
       }
     }
@@ -648,7 +652,7 @@
     }
 
     // Hide/show fullscreen button based on fullscreen state
-    document.addEventListener('fullscreenchange', function() {
+    document.addEventListener('fullscreenchange', function () {
       var doc = window.document;
       if (doc.fullscreenElement) {
         fsBtn.style.display = 'none';
@@ -694,7 +698,7 @@
             if (requestFullScreen) {
               var fsPromise = requestFullScreen.call(docEl);
               if (fsPromise !== undefined) {
-                fsPromise.catch(function(e) {
+                fsPromise.catch(function (e) {
                   console.warn("Initial FS blocked - needs user gesture");
                   fsBtn.style.display = 'block';
                 });
