@@ -1,0 +1,14 @@
+{
+  "firebase": {
+    "apiKey": "NEW_FIREBASE_WEB_API_KEY",
+    "authDomain": "NEW_PROJECT.firebaseapp.com",
+    "databaseURL": "https://NEW_DATABASE.firebasedatabase.app",
+    "projectId": "NEW_PROJECT",
+    "appId": "NEW_FIREBASE_WEB_APP_ID"
+  },
+  "mediaApi": "https://panelsync-media-staging.YOUR_SUBDOMAIN.workers.dev",
+  "sourceAccount": "teamtamilpirates@gmail.com",
+  "targetAccount": "YOUR_TARGET_GOOGLE_EMAIL",
+  "bootstrapAdminEmail": "",
+  "authRequestUri": "http://127.0.0.1:5501"
+}

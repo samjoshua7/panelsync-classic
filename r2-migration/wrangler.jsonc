@@ -1,0 +1,17 @@
+{
+  "name": "panelsync-media-staging",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-28",
+  "workers_dev": true,
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "panelsync-media-staging" }],
+  "durable_objects": { "bindings": [{ "name": "QUOTA", "class_name": "MediaQuota" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MediaQuota"] }],
+  "vars": {
+    "FIREBASE_PROJECT_ID": "REPLACE_WITH_NEW_SPARK_PROJECT",
+    "FIREBASE_DATABASE_URL": "https://REPLACE_WITH_NEW_DATABASE.firebasedatabase.app",
+    "ALLOWED_ORIGINS": "http://127.0.0.1:5501",
+    "STORAGE_LIMIT_BYTES": "1000000000",
+    "MAX_FILE_BYTES": "83886080"
+  },
+  "observability": { "enabled": false }
+}
