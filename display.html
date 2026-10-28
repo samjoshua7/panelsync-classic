@@ -93,13 +93,21 @@
       transform-origin: right;
     }
 
-    /* Watermark Styles */
-    #watermark {
+    /* Bottom-right controls: fullscreen above watermark */
+    #cornerControls {
       position: fixed;
       bottom: 15px;
       right: 15px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+      pointer-events: none;
+    }
+    /* Watermark Styles */
+    #watermark {
       text-align: right;
-      z-index: 1000;
       opacity: 0.9;
       pointer-events: none;
       transition: opacity 0.3s;
@@ -123,10 +131,6 @@
 
     /* Fullscreen Button Styles */
     #fullscreenBtn {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 10000;
       background: rgba(0, 0, 0, 0.4);
       color: white;
       border: 1px solid rgba(255, 255, 255, 0.2);
@@ -135,32 +139,84 @@
       cursor: pointer;
       font-size: 1.2rem;
       transition: background 0.3s;
+      pointer-events: auto;
     }
 
     #fullscreenBtn:hover {
       background: rgba(0, 0, 0, 0.8);
     }
 
-    #audioUnlockBtn {
+    #startupControlBar {
       position: fixed;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
+      -webkit-transform: translate(-50%, -50%);
       z-index: 10001;
-      background: #4f46e5;
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 15px 30px;
-      font-size: 1.5rem;
-      font-weight: bold;
-      cursor: pointer;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-      display: none;
+      background: rgba(15, 23, 42, 0.94);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 16px;
+      padding: 24px 32px;
+      text-align: center;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.8);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-width: 320px;
+      max-width: 90vw;
     }
 
-    #audioUnlockBtn:hover {
+    .control-btn-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    #audioUnlockBtn {
+      background: #4f46e5;
+      color: #ffffff;
+      border: 2px solid transparent;
+      border-radius: 12px;
+      padding: 14px 26px;
+      font-size: 1.25rem;
+      font-weight: bold;
+      cursor: pointer;
+      outline: none;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    #audioUnlockBtn:hover,
+    #audioUnlockBtn:focus {
       background: #4338ca;
+      border-color: #ffffff;
+      transform: translateY(-2px);
+    }
+
+    #expireCacheBtn {
+      background: #334155;
+      color: #f8fafc;
+      border: 2px solid transparent;
+      border-radius: 12px;
+      padding: 14px 22px;
+      font-size: 1.25rem;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    #expireCacheBtn:hover,
+    #expireCacheBtn:focus {
+      background: #475569;
+      border-color: #ffffff;
+      transform: translateY(-2px);
+    }
+
+    #cacheStatusMsg {
+      color: #94a3b8;
+      font-size: 0.95rem;
+      margin-top: 8px;
+      min-height: 1.2rem;
     }
 
     #debugOverlay {
@@ -195,12 +251,12 @@
 
     <div id="slideA" class="slide inactive">
       <img id="imagePlayerA" class="media-layer" alt="Signage Content">
-      <video id="videoPlayerA" class="media-layer" playsinline></video>
+      <video id="videoPlayerA" class="media-layer" playsinline preload="auto"></video>
       <div id="textPlayerA" class="media-layer text-player-class"></div>
     </div>
     <div id="slideB" class="slide inactive">
       <img id="imagePlayerB" class="media-layer" alt="Signage Content">
-      <video id="videoPlayerB" class="media-layer" playsinline></video>
+      <video id="videoPlayerB" class="media-layer" playsinline preload="auto"></video>
       <div id="textPlayerB" class="media-layer text-player-class"></div>
     </div>
   </div>
@@ -210,15 +266,26 @@
   <div id="progressBar"></div>
 
   <!-- Features -->
-  <div id="watermark">
+  <div id="cornerControls">
+    <button id="fullscreenBtn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
+    <div id="watermark">
     <div class="small">Built by</div>
-    <div class="main" id="dynamicName">II CSE C</div>
+    <div class="main" id="dynamicName">Silver Jubilee Developers</div>
+  </div>
   </div>
 
-  <button id="fullscreenBtn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
-  <button id="audioUnlockBtn" onclick="unlockAudio()">🔊 Enable Audio</button>
+  <!-- Operator Control Bar -->
+  <div id="startupControlBar">
+    <div class="control-btn-row">
+      <button id="audioUnlockBtn" onclick="unlockAudio()" tabindex="1">🔊 Enable Audio</button>
+      <button id="expireCacheBtn" onclick="expireCache()" tabindex="2">🗑️ Expire Cache</button>
+    </div>
+    <div id="cacheStatusMsg">System Ready. Click 'Enable Audio' to start.</div>
+  </div>
+
   <div id="debugOverlay">PanelSync Classic Display v2.0</div>
 
+  <script src="media-cache.js"></script>
   <script>
     // ==========================================
     // LEGACY SMART TV COMPATIBILITY (ES5 ONLY)
@@ -239,42 +306,70 @@
 
     var currentDept = urlParams.dept;
 
-    function verifyDeptAndInit() {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', 'https://civic-voice-530e3-default-rtdb.firebaseio.com/depts.json', true);
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-          try {
-            var data = JSON.parse(xhr.responseText) || {};
-            var allowedDepts = Object.keys(data);
-
-            if (!currentDept || allowedDepts.indexOf(currentDept) === -1) {
-              document.getElementById('viewport').style.display = 'none';
-              document.getElementById('deptModalOverlay').style.display = 'flex';
-              var deptGrid = document.getElementById('deptGrid');
-
-              for (var j = 0; j < allowedDepts.length; j++) {
-                var deptBtn = document.createElement('button');
-                deptBtn.style.cssText = 'padding: 1rem; border-radius: 12px; cursor: pointer; background: #4f46e5; color: white; border: none; font-weight: bold; text-transform: uppercase;';
-                deptBtn.innerText = allowedDepts[j];
-
-                (function (d) {
-                  deptBtn.onclick = function () {
-                    window.location.href = '?dept=' + d;
-                  };
-                })(allowedDepts[j]);
-
-                deptGrid.appendChild(deptBtn);
-              }
-            } else {
-              initDisplay();
-            }
-          } catch (e) {
-            console.error("Depts Parse Error", e);
-          }
+    // ==========================================
+    // LEGACY SMART TV INDEXEDDB CACHE (ES5 ONLY)
+    // ==========================================
+    var isPreloading = false;
+    PanelMediaCache.onProgress = function (loaded, total) {
+      var status = document.getElementById('cacheStatusMsg');
+      if (status) status.textContent = 'Caching media: ' + (loaded / 1048576).toFixed(1) +
+        (total ? ' / ' + (total / 1048576).toFixed(1) : '') + ' MB. First download only if persistence succeeds.';
+    };
+    function initIndexedDB(callback) { PanelMediaCache.open(callback); }
+    function getPlayableMediaUrl(url, callback) { PanelMediaCache.acquire(url, callback); }
+    function preloadAllMedia(items) {
+      if (isPreloading || !items || !items.length) return;
+      isPreloading = true;
+      var index = 0, cached = 0, failed = 0;
+      var status = document.getElementById('cacheStatusMsg');
+      function next() {
+        if (index >= items.length) {
+          isPreloading = false;
+          if (status) status.textContent = cached + ' persisted locally' +
+            (failed ? ', ' + failed + ' not persisted (see cache diagnostics).' : '.');
+          return;
         }
-      };
-      xhr.send();
+        var item = items[index++];
+        if (!item || !item.url) { next(); return; }
+        PanelMediaCache.warm(item.url, function (blob, persisted) {
+          if (persisted) cached++; else failed++;
+          setTimeout(next, 0);
+        });
+      }
+      next();
+    }
+    function expireCache() {
+      PanelMediaCache.clear(function (ok) {
+        var status = document.getElementById('cacheStatusMsg');
+        if (status) status.textContent = ok ? 'Cache cleared. Re-syncing...' :
+          'Cache busy or unavailable; nothing cleared. Try again after downloads finish.';
+        if (ok) { preloadAllMedia(mediaArray); fetchBackgrounds(); fetchMusic(); }
+      });
+    }
+
+    function verifyDeptAndInit() {
+      initIndexedDB(function (ready) {
+        console.log("IndexedDB Cache ready:", ready);
+        verifyDepartment();
+      });
+    }
+
+    function verifyDepartment() {
+      requestMetadata('https://civic-voice-530e3-default-rtdb.firebaseio.com/depts.json', function (data) {
+        var allowed = Object.keys(data || {});
+        if (currentDept && allowed.indexOf(currentDept) !== -1) { initDisplay(); return; }
+        document.getElementById('viewport').style.display = 'none';
+        document.getElementById('deptModalOverlay').style.display = 'flex';
+        var grid = document.getElementById('deptGrid');
+        grid.innerHTML = '';
+        allowed.forEach(function (dept) {
+          var button = document.createElement('button');
+          button.style.cssText = 'padding:1rem;border-radius:12px;cursor:pointer;background:#4f46e5;color:white;border:none;font-weight:bold;text-transform:uppercase;';
+          button.textContent = dept;
+          button.onclick = function () { window.location.href = '?dept=' + encodeURIComponent(dept); };
+          grid.appendChild(button);
+        });
+      });
     }
 
     var RTDB_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/dept/' + currentDept + '/media.json';
@@ -297,6 +392,7 @@
     var activeLayer = 'B';
     var currentTimer = null;
     var videoFallbackTimer = null;
+    var videoPlayRequestId = 0;
     var currentBackground = null;
     var currentMusic = null;
     var audioElement = null;
@@ -317,6 +413,38 @@
       }
     }
 
+    function startVideoProgress(videoElement, storedDuration) {
+      if (!progressBar || !videoElement) return;
+      progressBar.style.transition = 'none';
+
+      function getVideoDuration() {
+        if (isFinite(videoElement.duration) && videoElement.duration > 0) {
+          return videoElement.duration;
+        }
+        if (isFinite(storedDuration) && storedDuration > 0) {
+          return storedDuration;
+        }
+        return 0;
+      }
+
+
+      function updateVideoProgress() {
+        var videoDuration = getVideoDuration();
+        if (videoDuration > 0) {
+          var remainingPercent = 100 - ((videoElement.currentTime / videoDuration) * 100);
+          if (remainingPercent < 0) remainingPercent = 0;
+          if (remainingPercent > 100) remainingPercent = 100;
+          progressBar.style.width = remainingPercent + '%';
+        } else {
+          progressBar.style.width = '100%';
+        }
+      }
+
+      videoElement.ontimeupdate = updateVideoProgress;
+      videoElement.ondurationchange = updateVideoProgress;
+      updateVideoProgress();
+    }
+
     function getLayer(layerName) {
       return {
         container: document.getElementById('slide' + layerName),
@@ -326,97 +454,85 @@
       };
     }
 
+    var metadataRequests = {}, metadataEtags = {}, metadataRetry = {}, metadataSeen = {};
+    var metadataStats = { responses: 0, notModified: 0, responseCharacters: 0, offlineReads: 0 };
+    function requestMetadata(url, callback) {
+      if (metadataRequests[url] || (metadataRetry[url] || 0) > Date.now()) return;
+      function cached() {
+        if (metadataSeen[url]) return;
+        try {
+          var saved = localStorage.getItem('panelsync-metadata:' + url);
+          if (saved !== null) {
+            metadataStats.offlineReads++;
+            callback(JSON.parse(saved)); metadataSeen[url] = true;
+          }
+        } catch (e) { }
+      }
+      if (navigator.onLine === false) { cached(); return; }
+      var xhr = new XMLHttpRequest(), finished = false;
+      metadataRequests[url] = true;
+      function failed() {
+        if (finished) return; finished = true;
+        delete metadataRequests[url];
+        metadataRetry[url] = Date.now() + 30000;
+        cached();
+      }
+      try {
+        xhr.open('GET', url, true);
+        xhr.timeout = 15000;
+        xhr.setRequestHeader('X-Firebase-ETag', 'true');
+        if (metadataEtags[url]) xhr.setRequestHeader('If-None-Match', metadataEtags[url]);
+        xhr.onload = function () {
+          if (finished) return;
+          if (xhr.status !== 200 && xhr.status !== 304) {
+            // Permission failures must not be replaced with stale online data.
+            if (xhr.status === 401 || xhr.status === 403) {
+              finished = true; delete metadataRequests[url];
+              metadataRetry[url] = Date.now() + 30000; return;
+            }
+            failed(); return;
+          }
+          finished = true; delete metadataRequests[url]; metadataRetry[url] = 0;
+          var etag = xhr.getResponseHeader('ETag');
+          if (etag) metadataEtags[url] = etag;
+          if (xhr.status === 304) { metadataStats.notModified++; return; }
+          try {
+            var data = JSON.parse(xhr.responseText);
+            metadataStats.responses++; metadataStats.responseCharacters += xhr.responseText.length;
+            try { localStorage.setItem('panelsync-metadata:' + url, xhr.responseText); } catch (e) { }
+            callback(data); metadataSeen[url] = true;
+          } catch (e) { console.warn('Metadata could not be processed'); }
+        };
+        xhr.onerror = xhr.ontimeout = xhr.onabort = failed;
+        xhr.send();
+      } catch (e) { failed(); }
+    }
     function fetchSettings() {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', SETTINGS_URL, true);
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-          try {
-            var data = JSON.parse(xhr.responseText);
-            if (data && data.transition) {
-              transitionType = data.transition;
-            } else {
-              transitionType = 'cut';
-            }
-          } catch (e) {
-            console.error("Settings Parse Error", e);
-          }
-        }
-      };
-      xhr.send();
+      requestMetadata(SETTINGS_URL, function (data) { transitionType = data && data.transition || 'cut'; });
     }
-
     function fetchMedia() {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', RTDB_URL, true);
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-          try {
-            var data = JSON.parse(xhr.responseText);
-            if (data) {
-              var tempArray = [];
-              if (Array.isArray(data)) {
-                // Legacy array fallback
-                for (var i = 0; i < data.length; i++) {
-                  if (data[i]) tempArray.push(data[i]);
-                }
-              } else {
-                // New object structure
-                for (var key in data) {
-                  if (data.hasOwnProperty(key)) {
-                    tempArray.push(data[key]);
-                  }
-                }
-              }
-
-              // Sort strictly by the 'order' field
-              tempArray.sort(function (a, b) {
-                var orderA = (a.order !== undefined) ? parseInt(a.order, 10) : 999;
-                var orderB = (b.order !== undefined) ? parseInt(b.order, 10) : 999;
-                return orderA - orderB;
-              });
-
-              mediaArray = tempArray;
-              if (currentIndex === -1 && mediaArray.length > 0) {
-                nextSlide();
-              }
-            }
-          } catch (e) {
-            console.error("JSON Parse Error", e);
+      requestMetadata(RTDB_URL, function (data) {
+        var next = [], key, item;
+        data = data || {};
+        for (key in data) {
+          if (Object.prototype.hasOwnProperty.call(data, key)) {
+            item = data[key];
+            if (item && !item.disabled) next.push(item);
           }
         }
-      };
-      xhr.send();
+        next.sort(function (a, b) {
+          return (parseInt(a.order, 10) || 0) - (parseInt(b.order, 10) || 0);
+        });
+        mediaArray = next;
+        preloadAllMedia(mediaArray);
+        if (currentIndex === -1 && mediaArray.length) nextSlide();
+      });
     }
-
     function fetchBackgrounds() {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', BACKGROUNDS_URL, true);
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-          try {
-            currentBackground = JSON.parse(xhr.responseText);
-          } catch (e) {
-            console.error("Backgrounds Parse Error", e);
-          }
-        }
-      };
-      xhr.send();
+      requestMetadata(BACKGROUNDS_URL, function (data) { currentBackground = data; });
     }
-
     function fetchMusic() {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', MUSIC_URL, true);
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-          try {
-            currentMusicObj = JSON.parse(xhr.responseText);
-          } catch (e) {
-            console.error("Music Parse Error", e);
-          }
-        }
-      };
-      xhr.send();
+      requestMetadata(MUSIC_URL, function (data) { currentMusicObj = data; });
     }
 
     function nextSlide() {
@@ -431,7 +547,7 @@
       }
 
       var item = mediaArray[currentIndex];
-      console.log("Current slide:", item);
+      console.log("Current slide:", currentIndex, item && item.type);
 
       if (!item || !item.type) {
         nextSlide();
@@ -442,12 +558,15 @@
     }
 
     function setupLayer(layer, item) {
+      layer.container._generation = (layer.container._generation || 0) + 1;
       layer.imgEl.classList.remove('active');
       layer.textEl.classList.remove('active');
       layer.vidEl.classList.remove('active');
 
+      var playable = item._playableUrl || item.url;
+
       if (item.type === 'video') {
-        layer.vidEl.src = item.url;
+        layer.vidEl.src = playable;
         layer.vidEl.classList.add('active');
         layer.vidEl.muted = !audioUnlocked;
         layer.vidEl.style.backgroundColor = 'transparent';
@@ -457,8 +576,19 @@
         layer.textEl.textContent = item.content;
         layer.textEl.classList.add('active');
       } else if (item.type === 'image') {
-        layer.imgEl.src = item.url;
+        layer.imgEl.src = playable;
         layer.imgEl.classList.add('active');
+      }
+
+      // Memory cleanup: track and revoke old layer blob url if needed
+      if (layer.container._activeBlobUrl) {
+        if (layer.container._activeBlobUrl.indexOf('blob:') === 0) {
+          PanelMediaCache.release(layer.container._activeBlobUrl);
+        }
+        layer.container._activeBlobUrl = null;
+      }
+      if (playable && playable.indexOf('blob:') === 0) {
+        layer.container._activeBlobUrl = playable;
       }
 
       // Handle background
@@ -468,46 +598,88 @@
       updateMusic(item);
     }
 
+    var backgroundRequest = 0, musicRequest = 0;
+    var backgroundSource = null, backgroundPlayable = null;
+    var musicSource = null, musicPlayable = null;
     function updateBackground(item) {
+      var request = ++backgroundRequest;
       var bgLayer = document.getElementById('backgroundLayer');
       if (item.useBackground && currentBackground && currentBackground.url) {
-        bgLayer.style.backgroundImage = 'url("' + currentBackground.url + '")';
-        bgLayer.style.display = 'block';
+        var source = currentBackground.url;
+        if (backgroundSource === source && backgroundPlayable) {
+          bgLayer.style.display = 'block'; return;
+        }
+        getPlayableMediaUrl(source, function (bgPlayableUrl) {
+          if (request !== backgroundRequest) { PanelMediaCache.release(bgPlayableUrl); return; }
+          var previous = backgroundPlayable;
+          backgroundSource = source; backgroundPlayable = bgPlayableUrl;
+          bgLayer.style.backgroundImage = 'url("' + bgPlayableUrl + '")';
+          bgLayer.style.display = 'block';
+          if (previous) PanelMediaCache.release(previous);
+        });
       } else {
         bgLayer.style.display = 'none';
+        bgLayer.style.backgroundImage = '';
+        if (backgroundPlayable) PanelMediaCache.release(backgroundPlayable);
+        backgroundSource = backgroundPlayable = null;
       }
     }
 
     function updateMusic(item) {
+      var request = ++musicRequest;
       if (!audioElement) {
         audioElement = document.getElementById('backgroundAudio');
       }
 
       if (item.useMusic && currentMusicObj && currentMusicObj.url) {
-        if (audioElement.src !== currentMusicObj.url) {
-          audioElement.src = currentMusicObj.url;
-        }
-
-        if (audioUnlocked) {
-          var playPromise = audioElement.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(function (e) {
-              console.warn("Audio play failed:", e);
-              document.getElementById('audioUnlockBtn').style.display = 'block';
-              audioUnlocked = false;
-            });
+        var source = currentMusicObj.url;
+        function readyMusic(musicPlayableUrl) {
+          if (request !== musicRequest) { PanelMediaCache.release(musicPlayableUrl); return; }
+          if (audioElement.src !== musicPlayableUrl) {
+            audioElement.src = musicPlayableUrl;
           }
-        } else {
-          document.getElementById('audioUnlockBtn').style.display = 'block';
+          if (musicPlayable !== musicPlayableUrl) {
+            if (musicPlayable) PanelMediaCache.release(musicPlayable);
+            musicPlayable = musicPlayableUrl;
+          }
+          musicSource = source;
+
+          if (audioUnlocked) {
+            var playPromise = audioElement.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(function (e) {
+                console.warn("Audio play failed:", e);
+                var ctrlBar = document.getElementById('startupControlBar');
+                if (ctrlBar && !audioUnlocked) {
+                  ctrlBar.style.display = 'block';
+                }
+                audioUnlocked = false;
+              });
+            }
+          } else {
+            var ctrlBar = document.getElementById('startupControlBar');
+            if (ctrlBar && !audioUnlocked) {
+              ctrlBar.style.display = 'block';
+            }
+          }
         }
+        if (musicSource === source && musicPlayable) readyMusic(musicPlayable);
+        else getPlayableMediaUrl(source, readyMusic);
       } else {
         audioElement.pause();
+        audioElement.removeAttribute('src');
+        audioElement.load();
+        if (musicPlayable) PanelMediaCache.release(musicPlayable);
+        musicSource = musicPlayable = null;
       }
     }
 
     function unlockAudio() {
       audioUnlocked = true;
-      document.getElementById('audioUnlockBtn').style.display = 'none';
+      var ctrlBar = document.getElementById('startupControlBar');
+      if (ctrlBar) {
+        ctrlBar.style.display = 'none';
+      }
 
       var activeLayerObj = getLayer(activeLayer);
       if (activeLayerObj.vidEl.classList.contains('active')) {
@@ -527,6 +699,7 @@
     }
 
     function playItem(item) {
+      var slideRequest = ++videoPlayRequestId;
       if (currentTimer) {
         clearTimeout(currentTimer);
         currentTimer = null;
@@ -544,17 +717,24 @@
 
       if (item.type === 'image') {
         duration = parseInt(item.duration, 10) || 5;
-        // 1. IMAGE PRELOADING (CRITICAL)
-        var preload = new Image();
-        preload.onload = function () {
-          setupLayer(nextLayer, item);
-          startSlide(nextLayerName, currentLayerObj, nextLayer, duration, false);
-        };
-        preload.onerror = function () {
-          console.warn("Failed to load image:", item.url);
-          nextSlide();
-        };
-        preload.src = item.url;
+        getPlayableMediaUrl(item.url, function (playableUrl) {
+          if (slideRequest !== videoPlayRequestId) { PanelMediaCache.release(playableUrl); return; }
+          item._playableUrl = playableUrl;
+          // 1. IMAGE PRELOADING (CRITICAL)
+          var preload = new Image();
+          preload.onload = function () {
+            if (slideRequest !== videoPlayRequestId) { PanelMediaCache.release(playableUrl); return; }
+            setupLayer(nextLayer, item);
+            startSlide(nextLayerName, currentLayerObj, nextLayer, duration, false);
+          };
+          preload.onerror = function () {
+            PanelMediaCache.release(playableUrl);
+            if (slideRequest !== videoPlayRequestId) return;
+            console.warn("Failed to load image");
+            nextSlide();
+          };
+          preload.src = playableUrl;
+        });
 
       } else if (item.type === 'text') {
         duration = parseInt(item.duration, 10) || 10;
@@ -562,40 +742,71 @@
         startSlide(nextLayerName, currentLayerObj, nextLayer, duration, false);
 
       } else if (item.type === 'video') {
-        setupLayer(nextLayer, item);
-        nextLayer.vidEl.onended = function () {
-          if (activeLayer === nextLayerName) {
-            nextSlide();
+        var requestId = slideRequest;
+        getPlayableMediaUrl(item.url, function (playableUrl) {
+          if (requestId !== videoPlayRequestId) { PanelMediaCache.release(playableUrl); return; }
+
+          var video = nextLayer.vidEl;
+          var videoStarted = false;
+          var videoFinished = false;
+          var lastTime = -1, stalledSince = Date.now();
+          function watchVideo() {
+            if (videoFinished || requestId !== videoPlayRequestId) return;
+            if (video.currentTime !== lastTime) { lastTime = video.currentTime; stalledSince = Date.now(); }
+            if (Date.now() - stalledSince > 45000) {
+              advanceFromVideo('Video made no playback progress for 45 seconds; skipping.'); return;
+            }
+            videoFallbackTimer = setTimeout(watchVideo, 1000);
           }
-        };
 
-        var playPromise = nextLayer.vidEl.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(function (error) {
-            console.warn("Autoplay blocked", error);
-            nextSlide();
-          });
-        }
-
-        if (!isNaN(nextLayer.vidEl.duration) && nextLayer.vidEl.duration > 0) {
-          duration = nextLayer.vidEl.duration;
-          startSlide(nextLayerName, currentLayerObj, nextLayer, duration, true);
-        } else {
-          nextLayer.vidEl.onloadedmetadata = function () {
+          function advanceFromVideo(reason) {
+            if (videoFinished || requestId !== videoPlayRequestId) return;
+            videoFinished = true;
             if (videoFallbackTimer) {
               clearTimeout(videoFallbackTimer);
               videoFallbackTimer = null;
             }
-            duration = nextLayer.vidEl.duration;
-            startSlide(nextLayerName, currentLayerObj, nextLayer, duration, true);
-          };
-          videoFallbackTimer = setTimeout(function () {
-            if (nextLayer.container.className.indexOf('inactive') !== -1) {
-              duration = 10;
-              startSlide(nextLayerName, currentLayerObj, nextLayer, duration, true);
+            if (reason) console.warn(reason);
+            if (!videoStarted || activeLayer === nextLayerName) {
+              nextSlide();
             }
-          }, 2000);
-        }
+          }
+
+          function revealVideoWhenReady() {
+            if (videoStarted || videoFinished || requestId !== videoPlayRequestId) return;
+            videoStarted = true;
+            var storedDuration = parseFloat(item.duration);
+            var progressDuration = (isFinite(video.duration) && video.duration > 0)
+              ? video.duration
+              : ((isFinite(storedDuration) && storedDuration > 0) ? storedDuration : 0);
+            startSlide(nextLayerName, currentLayerObj, nextLayer, progressDuration, true);
+          }
+
+          video.onloadedmetadata = null;
+          video.onloadeddata = revealVideoWhenReady;
+          video.oncanplay = revealVideoWhenReady;
+          video.onplaying = revealVideoWhenReady;
+          video.onended = function () {
+            advanceFromVideo(null);
+          };
+          video.onerror = function () {
+            var mediaError = video.error;
+            advanceFromVideo('Video failed to load' + (mediaError ? ' (code ' + mediaError.code + ')' : ''));
+          };
+
+          item._playableUrl = playableUrl;
+          setupLayer(nextLayer, item);
+          video.load();
+          videoFallbackTimer = setTimeout(watchVideo, 1000);
+
+          var playPromise = video.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(function (error) {
+              advanceFromVideo('Video playback failed: ' + (error && error.message ? error.message : error));
+            });
+          }
+
+        });
       } else {
         nextSlide();
       }
@@ -618,7 +829,11 @@
       activeLayer = nextLayerName;
 
       // 2. Start progress bar EXACTLY when slide becomes visible
-      startProgressBar(duration);
+      if (isVideo) {
+        startVideoProgress(nextLayer.vidEl, duration);
+      } else {
+        startProgressBar(duration);
+      }
 
       // 3. Schedule next slide
       if (!isVideo) {
@@ -626,11 +841,31 @@
       }
 
       // 4. Cleanup hidden container gracefully (no DOM clearing before fade)
+      var cleanupGeneration = currentLayer.container._generation;
       setTimeout(function () {
-        if (currentLayer.container.className.indexOf('inactive') !== -1) {
+        if (currentLayer.container._generation === cleanupGeneration && currentLayer.container.className.indexOf('inactive') !== -1) {
           if (currentLayer.vidEl) {
             currentLayer.vidEl.pause();
-            currentLayer.vidEl.src = "";
+            currentLayer.vidEl.ontimeupdate = null;
+            currentLayer.vidEl.ondurationchange = null;
+            currentLayer.vidEl.onloadedmetadata = null;
+            currentLayer.vidEl.onloadeddata = null;
+            currentLayer.vidEl.oncanplay = null;
+            currentLayer.vidEl.onplaying = null;
+            currentLayer.vidEl.onended = null;
+            currentLayer.vidEl.onerror = null;
+            currentLayer.vidEl.removeAttribute('src');
+            currentLayer.vidEl.load();
+          }
+          if (currentLayer.imgEl) {
+            currentLayer.imgEl.src = "";
+          }
+          // Memory cleanup: Revoke old slide's blob URL from TV RAM
+          if (currentLayer.container._activeBlobUrl) {
+            if (currentLayer.container._activeBlobUrl.indexOf('blob:') === 0) {
+              PanelMediaCache.release(currentLayer.container._activeBlobUrl);
+            }
+            currentLayer.container._activeBlobUrl = null;
           }
         }
       }, 600);
