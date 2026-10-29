@@ -256,6 +256,61 @@
         }
         .btn-update { background: #f1f5f9; color: var(--text-dark); }
         .btn-delete { background: #fee2e2; color: var(--danger); }
+        .btn-preview { background: #e0e7ff; color: var(--primary); }
+        .btn-preview:hover { background: #c7d2fe; }
+        .btn-disable { background: #fef3c7; color: #b45309; }
+        .btn-disable:hover { background: #fde68a; }
+        .btn-enable { background: #dcfce7; color: #15803d; }
+        .btn-enable:hover { background: #bbf7d0; }
+
+        .media-card.is-disabled {
+            opacity: 0.68;
+            border: 2px dashed #94a3b8;
+            background: #f8fafc;
+        }
+        .badge-disabled {
+            background: #cbd5e1;
+            color: #334155;
+        }
+
+        .preview-hover-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.35);
+            display: flex; justify-content: center; align-items: center;
+            color: white; font-size: 1.1rem; font-weight: 600;
+            opacity: 0; transition: opacity 0.2s;
+            cursor: pointer;
+            z-index: 5;
+        }
+        .preview-container:hover .preview-hover-overlay {
+            opacity: 1;
+        }
+
+        .modal-nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.55);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1.1rem;
+            z-index: 10;
+        }
+        .modal-nav-btn:hover {
+            background: rgba(0, 0, 0, 0.9);
+            transform: translateY(-50%) scale(1.08);
+        }
+        .modal-nav-prev { left: 16px; }
+        .modal-nav-next { right: 16px; }
 
         #statusMsg {
             margin-top: 1rem;
@@ -273,11 +328,11 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
     </script>
+    <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
     <!-- Dept Selection Modal -->
@@ -320,6 +375,57 @@
             </div>
 
             <button class="primary-btn" onclick="bootstrapFirstDepartment()">Initialize System</button>
+        </div>
+    </div>
+
+    <!-- Slide Preview Modal -->
+    <div class="modal-overlay" id="slidePreviewModal" style="display:none; z-index: 10000; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
+        <div class="modal" style="max-width: 850px; width: 92%; padding: 0; overflow: hidden; border-radius: 16px; background: #fff; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+            <!-- Modal Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border);">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span id="previewModalTitle" style="font-size: 1.1rem; font-weight: 700; color: var(--text-dark);">Slide #1 of 5</span>
+                    <span id="previewModalTypeBadge" class="badge" style="position: static;">IMAGE</span>
+                    <span id="previewModalStatusBadge" class="badge" style="position: static;">ACTIVE</span>
+                </div>
+                <button class="btn-sm btn-update" style="padding: 6px 12px; flex: none;" onclick="closeSlidePreview()" title="Close (Esc)"><i class="fas fa-times"></i> Close</button>
+            </div>
+
+            <!-- 16:9 Display Simulation Frame -->
+            <div id="modalScreenContainer" style="width: 100%; aspect-ratio: 16/9; background: #000; position: relative; display: flex; justify-content: center; align-items: center; overflow: hidden;">
+                <!-- Image Display -->
+                <img id="previewModalImg" src="" alt="Slide Preview" style="display: none; max-width: 100%; max-height: 100%; object-fit: contain;">
+                
+                <!-- Video Display -->
+                <video id="previewModalVideo" controls preload="metadata" style="display: none; width: 100%; height: 100%; object-fit: contain;"></video>
+                
+                <!-- Text Slide Display -->
+                <div id="previewModalText" style="display: none; width: 100%; height: 100%; justify-content: center; align-items: center; text-align: center; font-size: 2.2rem; font-weight: bold; padding: 2.5rem; box-sizing: border-box; white-space: pre-wrap; word-break: break-word;"></div>
+
+                <!-- Floating Navigation Buttons -->
+                <button class="modal-nav-btn modal-nav-prev" onclick="navigateSlidePreview(-1)" title="Previous Slide (Left Arrow)"><i class="fas fa-chevron-left"></i></button>
+                <button class="modal-nav-btn modal-nav-next" onclick="navigateSlidePreview(1)" title="Next Slide (Right Arrow)"><i class="fas fa-chevron-right"></i></button>
+            </div>
+
+            <!-- Metadata Details Row -->
+            <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; padding: 0.75rem 1.5rem; background: #f8fafc; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 0.85rem; color: var(--text-gray);">
+                <div><i class="far fa-clock"></i> Duration: <strong id="previewModalDuration" style="color: var(--text-dark);">5s</strong></div>
+                <div><i class="fas fa-image"></i> Background Overlay: <strong id="previewModalBg" style="color: var(--text-dark);">Off</strong></div>
+                <div><i class="fas fa-music"></i> Audio Accompaniment: <strong id="previewModalMusic" style="color: var(--text-dark);">Off</strong></div>
+            </div>
+
+            <!-- Modal Footer Actions -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem;">
+                <button id="previewModalDisableBtn" class="btn-sm btn-disable" style="flex: none; padding: 0.6rem 1.2rem;" onclick="toggleDisableCurrentPreview()">
+                    <i class="fas fa-eye-slash"></i> Disable Slide
+                </button>
+                <div style="display: flex; gap: 10px;">
+                    <button id="previewModalEditBtn" class="btn-sm btn-update" style="display: none; flex: none; padding: 0.6rem 1.2rem;" onclick="editCurrentPreviewText()">
+                        <i class="fas fa-edit"></i> Edit Text
+                    </button>
+                    <button class="btn-sm btn-update" style="flex: none; padding: 0.6rem 1.2rem;" onclick="closeSlidePreview()">Close</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -437,6 +543,32 @@
                 </div>
                 <input type="file" id="fileInput" hidden accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf">
 
+                <!-- Selected File Live Preview Area -->
+                <div id="selectedSlidePreview" style="display:none; margin-top:1.25rem; padding:12px; background:#f8fafc; border:1px solid var(--border); border-radius:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                        <div style="overflow:hidden; padding-right:8px; flex:1;">
+                            <div id="previewFileName" style="font-size:0.85rem; font-weight:700; color:var(--text-dark); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;" title=""></div>
+                            <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+                                <span id="previewFileTypeBadge" class="badge" style="position:static; padding:2px 6px; font-size:0.65rem;">IMAGE</span>
+                                <span id="previewFileSize" style="font-size:0.75rem; color:var(--text-gray);"></span>
+                            </div>
+                        </div>
+                        <button type="button" onclick="clearSelectedFile()" title="Cancel & Clear" style="background:#fee2e2; border:none; color:var(--danger); width:28px; height:28px; border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- Visual Preview Stage -->
+                    <div id="previewMediaBox" style="width:100%; height:160px; background:#0f172a; border-radius:8px; display:flex; justify-content:center; align-items:center; overflow:hidden; position:relative;">
+                        <img id="newSlideImagePreview" style="display:none; max-width:100%; max-height:100%; object-fit:contain;">
+                        <video id="newSlideVideoPreview" controls muted style="display:none; width:100%; max-height:160px; object-fit:contain;"></video>
+                        <div id="newSlidePdfPreview" style="display:none; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:10px; box-sizing:border-box;">
+                            <canvas id="pdfPreviewCanvas" style="max-width:90%; max-height:110px; object-fit:contain; border-radius:4px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.4);"></canvas>
+                            <span id="pdfPageBadge" style="margin-top:6px; background:#e0e7ff; color:var(--primary); font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:4px;"></span>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="imageControls" style="display: none;">
                     <div class="form-group">
                         <label>Display Duration (seconds)</label>
@@ -542,7 +674,7 @@
         <section>
             <div class="card">
                 <div class="card-title">
-                    <i class="fas fa-tv"></i> Active Display Loop
+                    <i class="fas fa-tv"></i> Slide library
                     <span style="font-size:0.8rem; font-weight:normal; margin-left:auto; color:var(--text-gray);" id="itemCount">0 items</span>
                 </div>
                 <div class="media-grid" id="mediaGrid">
@@ -552,30 +684,30 @@
         </section>
     </main>
 
-    <script>
+<script src="access-control.js"></script>
+<script src="dashboard.js"></script>
+<script src="media-management.js"></script>
+<script src="browser-storage.js"></script>
+<script>
         // ==========================================
         // SECURITY & CONFIG
         // ==========================================
-        if (sessionStorage.getItem('auth') !== 'true') {
-            window.location.href = 'index.html';
-        }
+        // Access is verified from Firebase below before revealing the dashboard.
 
         const firebaseConfig = {
-            apiKey: "AIzaSyC3TwG6SAgrBcVoHHPEWDl8DluGldZTYcs",
-            authDomain: "civic-voice-530e3.firebaseapp.com",
-            databaseURL: "https://civic-voice-530e3-default-rtdb.firebaseio.com",
-            projectId: "civic-voice-530e3",
-            storageBucket: "civic-voice-530e3.firebasestorage.app",
-            messagingSenderId: "445788979324",
-            appId: "1:445788979324:web:7d454068b866150f0c49f9",
-            measurementId: "G-QGZD0JBDVH"
-        };
+          "apiKey": "AIzaSyBRSB0PEpJHQyFo7PiduGuTmZPDtnZdjv4",
+          "authDomain": "fx-panelsync.firebaseapp.com",
+          "databaseURL": "https://fx-panelsync-default-rtdb.firebaseio.com",
+          "projectId": "fx-panelsync",
+          "appId": "1:634441644723:web:68d490a0eefef398d14ec6",
+          "messagingSenderId": "634441644723"
+};
 
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 
         const auth = firebase.auth();
         const db = firebase.database();
-        const storage = firebase.storage();
+        const storage = window.PanelB2Storage(auth, "https://panelsync-b2-staging.fxodapp.workers.dev");
 
         // ==========================================
         // RATE LIMITING & SECURITY
@@ -662,18 +794,29 @@
         // DEPARTMENT MANAGEMENT
         // ==========================================
         const urlParams = new URLSearchParams(window.location.search);
-        const currentDept = urlParams.get('dept');
+        const currentDept = PanelAccess.normalizeDept(urlParams.get('dept'));
+        const mediaManagement = currentDept ? PanelMediaManagement(db, storage, currentDept) : null;
 
         document.querySelector('nav').style.display = 'none';
         document.querySelector('main').style.display = 'none';
 
-        db.ref('depts').once('value').then(snapshot => {
-            const depts = snapshot.val() || {};
-            const allowedDepts = Object.keys(depts);
+        PanelAccess.resolve(auth, db, currentDept).then(access => {
+            const depts = access.depts;
+            const allowedDepts = Object.keys(access.roles);
+            const roleLevel = access.role;
+            sessionStorage.setItem('auth', 'true');
+            sessionStorage.setItem('adminEmail', access.email);
+            sessionStorage.setItem('roleLevel', String(roleLevel));
+            // Revocation and role changes invalidate the open panel too.
+            function watchRole(path) {
+                let initial = true;
+                db.ref(path).on('value', () => { if (initial) initial = false; else location.reload(); });
+            }
+            watchRole('users/' + access.userKey);
+            if (currentDept) watchRole('dept/' + currentDept + '/users/' + access.userKey);
+            auth.onAuthStateChanged(user => { if (!user) location.replace('index.html'); });
 
-            const roleLevel = parseInt(sessionStorage.getItem('roleLevel')) || 0;
-
-            if (allowedDepts.length === 0) {
+            if (Object.keys(depts).length === 0) {
                 // BOOTSTRAP MODE
                 if (roleLevel === 3) {
                     document.getElementById('bootstrapOverlay').style.display = 'flex';
@@ -682,6 +825,7 @@
                     logout();
                 }
             } else if (!currentDept || !allowedDepts.includes(currentDept)) {
+                if (allowedDepts.length === 1) { location.replace('?dept=' + encodeURIComponent(allowedDepts[0])); return; }
                 document.getElementById('deptModalOverlay').style.display = 'flex';
                 
                 const deptGrid = document.getElementById('deptGrid');
@@ -731,13 +875,60 @@
                 }
 
                 initAdminData();
+                PanelDashboard.mount(access);
             }
+        }).catch(error => {
+            sessionStorage.clear();
+            document.querySelector('main').style.display = 'none';
+            document.getElementById('loadingOverlay').style.display = 'none';
+            const notice = document.createElement('div');
+            notice.style.cssText = 'max-width:620px;margin:80px auto;padding:30px;background:var(--card-bg,#182235);border-radius:16px;color:white;font:18px system-ui';
+            const message = document.createElement('p'); message.textContent = error.message;
+            const link = document.createElement('a'); link.href = 'index.html'; link.textContent = 'Return to department sign-in';
+            notice.append(message, link); document.body.appendChild(notice);
         });
 
         let mediaArray = [];
         let mediaMap = {};
+        let activeMediaArray = [];
+        let activeMediaMap = {};
+        let disabledMediaArray = [];
+        let disabledMediaMap = {};
         let currentBackground = null;
         let currentMusicObj = null;
+
+        function getNodePath(id) {
+            return disabledMediaMap[id] ? 'disabled_media' : 'media';
+        }
+
+        function getItemById(id) {
+            return activeMediaMap[id] || disabledMediaMap[id] || mediaArray.find(item => item.id === id);
+        }
+
+        function mergeAndRenderMedia() {
+            mediaArray = [];
+            mediaMap = {};
+
+            activeMediaArray.forEach(item => {
+                item.disabled = false;
+                mediaArray.push(item);
+                mediaMap[item.id] = item;
+            });
+
+            disabledMediaArray.forEach(item => {
+                item.disabled = true;
+                mediaArray.push(item);
+                mediaMap[item.id] = item;
+            });
+
+            mediaArray.sort((a, b) => (a.order || 999) - (b.order || 999));
+            const summary = document.getElementById('playlistSummary');
+            if (summary) summary.textContent = activeMediaArray.length + ' active · ' + disabledMediaArray.length + ' disabled · ' + mediaArray.length + ' total slides';
+            renderGrid();
+            if (currentPreviewIndex >= 0 && document.getElementById('slidePreviewModal').style.display === 'flex') {
+                renderModalSlide();
+            }
+        }
 
         // DOM Elements
         const fileInput = document.getElementById('fileInput');
@@ -749,13 +940,26 @@
         const adminEmail = document.getElementById('adminEmail');
 
         function initAdminData() {
+            const flow = document.createElement('section');
+            flow.className = 'card'; flow.style.cssText = 'grid-column:1/-1;padding:18px';
+            flow.dataset.backendDetails = ''; flow.classList.add('backend-details');
+            flow.innerHTML = '<h3>PanelSync · New backend</h3><p>Google sign-in &amp; playlists: Firebase fx-panelsync → media gateway: Cloudflare → files: Backblaze B2</p><p>1. Select and preview → 2. Upload → 3. Preview published slide → 4. Enable or disable. Deletion removes the playlist entry first and tracks storage cleanup.</p><p id="playlistSummary" role="status"></p><p id="cleanupStatus" role="status">Checking cleanup…</p><button id="retryCleanup" type="button">Retry cleanup</button>';
+            document.querySelector('aside').append(flow);
+            document.getElementById('retryCleanup').onclick = () => mediaManagement.retry().catch(error => alert(error.message));
+            db.ref(`dept/${currentDept}/cleanup_jobs`).on('value', snapshot => {
+                const jobs = Object.values(snapshot.val() || {});
+                const uploading = jobs.filter(j => j.uploadUntil > Date.now()).length;
+                document.getElementById('cleanupStatus').textContent = jobs.length ? uploading + ' upload(s) awaiting publication; ' + (jobs.length - uploading) + ' pending cleanup job(s). ' + (jobs.find(j => j.error)?.error || '') : 'No pending storage cleanup.';
+            }, error => { document.getElementById('cleanupStatus').textContent = 'Cleanup status unavailable: ' + error.message; });
+            mediaManagement.retry().catch(console.error);
+            setInterval(() => mediaManagement.retry().catch(console.warn), 60000);
             adminEmail.textContent = sessionStorage.getItem('adminEmail');
             
-            // Listen to department-specific data
+            // Listen to active slides (dept/{dept}/media)
             db.ref(`dept/${currentDept}/media`).on('value', snapshot => {
                 const val = snapshot.val();
-                mediaMap = {};
-                mediaArray = [];
+                activeMediaMap = {};
+                activeMediaArray = [];
                 
                 if (val) {
                     if (Array.isArray(val)) {
@@ -772,20 +976,42 @@
                             return;
                         }
                     } else {
-                        mediaMap = val;
+                        activeMediaMap = val;
                         for (let key in val) {
                             if (val.hasOwnProperty(key)) {
                                 const item = val[key];
                                 item.id = key;
                                 if (typeof item.order === 'undefined') item.order = 999;
-                                mediaArray.push(item);
+                                activeMediaArray.push(item);
                             }
                         }
                     }
                 }
                 
-                mediaArray.sort((a, b) => a.order - b.order);
-                renderGrid();
+                activeMediaArray.sort((a, b) => a.order - b.order);
+                mergeAndRenderMedia();
+            });
+
+            // Listen to disabled slides (dept/{dept}/disabled_media)
+            db.ref(`dept/${currentDept}/disabled_media`).on('value', snapshot => {
+                const val = snapshot.val();
+                disabledMediaMap = {};
+                disabledMediaArray = [];
+
+                if (val) {
+                    disabledMediaMap = val;
+                    for (let key in val) {
+                        if (val.hasOwnProperty(key)) {
+                            const item = val[key];
+                            item.id = key;
+                            if (typeof item.order === 'undefined') item.order = 999;
+                            disabledMediaArray.push(item);
+                        }
+                    }
+                }
+
+                disabledMediaArray.sort((a, b) => a.order - b.order);
+                mergeAndRenderMedia();
             });
 
             // Listen to single background
@@ -958,15 +1184,18 @@
             }
         }
 
+        let usersSubscription = null;
         function loadUsersForDept(dept) {
             if (!dept) return;
+            if (usersSubscription) usersSubscription.off('value');
             selectedUmDept = dept;
             const tbody = document.getElementById('umUserTableBody');
             tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:10px;">Loading...</td></tr>';
 
             const refPath = dept === "global_super" ? 'users' : `dept/${dept}/users`;
 
-            db.ref(refPath).on('value', snapshot => {
+            usersSubscription = db.ref(refPath);
+            usersSubscription.on('value', snapshot => {
                 // Ensure we only update if this dept is still selected
                 if (selectedUmDept !== dept) return; 
                 
@@ -1082,36 +1311,147 @@
             });
         }
 
-        // Handle File Selection
+        let currentSelectedObjectUrl = null;
+
+        function clearSelectedFile() {
+            fileInput.value = '';
+            document.getElementById('selectedSlidePreview').style.display = 'none';
+            document.getElementById('imageControls').style.display = 'none';
+            document.getElementById('videoControls').style.display = 'none';
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = 'Push to Displays';
+            
+            const imgPreview = document.getElementById('newSlideImagePreview');
+            imgPreview.style.display = 'none';
+            imgPreview.src = '';
+
+            const vidPreview = document.getElementById('newSlideVideoPreview');
+            vidPreview.pause();
+            vidPreview.style.display = 'none';
+            vidPreview.src = '';
+
+            const pdfPreview = document.getElementById('newSlidePdfPreview');
+            pdfPreview.style.display = 'none';
+            const canvas = document.getElementById('pdfPreviewCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (currentSelectedObjectUrl) {
+                URL.revokeObjectURL(currentSelectedObjectUrl);
+                currentSelectedObjectUrl = null;
+            }
+        }
+
+        // Handle File Selection with Live Preview
         fileInput.addEventListener('change', async e => {
             const file = e.target.files[0];
-            if (!file) return;
+            if (!file) {
+                clearSelectedFile();
+                return;
+            }
 
             let maxSize = 10; // Default images
             if (file.type === 'video/mp4') maxSize = 80;
             if (file.type === 'application/pdf') maxSize = 25;
 
             if (!validateFile(file, 'slides', maxSize)) {
-                fileInput.value = '';
+                clearSelectedFile();
                 return;
             }
 
-            // For PDF we might add many slides, but let's check base limit first
             if (!checkUploadLimits('slides', 1)) {
-                fileInput.value = '';
+                clearSelectedFile();
                 return;
             }
 
+            if (currentSelectedObjectUrl) {
+                URL.revokeObjectURL(currentSelectedObjectUrl);
+                currentSelectedObjectUrl = null;
+            }
+
+            const previewBox = document.getElementById('selectedSlidePreview');
+            const fileNameEl = document.getElementById('previewFileName');
+            const fileSizeEl = document.getElementById('previewFileSize');
+            const fileBadgeEl = document.getElementById('previewFileTypeBadge');
+            const imgPreview = document.getElementById('newSlideImagePreview');
+            const vidPreview = document.getElementById('newSlideVideoPreview');
+            const pdfPreview = document.getElementById('newSlidePdfPreview');
+
+            fileNameEl.textContent = file.name;
+            fileNameEl.title = file.name;
+
+            const sizeFormatted = file.size > 1024 * 1024 
+                ? (file.size / (1024 * 1024)).toFixed(1) + ' MB' 
+                : (file.size / 1024).toFixed(0) + ' KB';
+            fileSizeEl.textContent = `${sizeFormatted} (Max ${maxSize}MB)`;
+
+            imgPreview.style.display = 'none';
+            imgPreview.src = '';
+            vidPreview.pause();
+            vidPreview.style.display = 'none';
+            vidPreview.src = '';
+            pdfPreview.style.display = 'none';
             imageControls.style.display = 'none';
             videoControls.style.display = 'none';
+
             uploadBtn.disabled = false;
+            previewBox.style.display = 'block';
 
             if (file.type.startsWith('image/')) {
+                fileBadgeEl.textContent = 'IMAGE';
+                fileBadgeEl.className = 'badge badge-image';
                 imageControls.style.display = 'block';
+                uploadBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Push Image to Displays';
+
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    imgPreview.src = ev.target.result;
+                    imgPreview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+
             } else if (file.type === 'video/mp4') {
+                fileBadgeEl.textContent = 'VIDEO (MP4)';
+                fileBadgeEl.className = 'badge badge-video';
                 videoControls.style.display = 'block';
+                uploadBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Push Video to Displays';
+
+                currentSelectedObjectUrl = URL.createObjectURL(file);
+                vidPreview.src = currentSelectedObjectUrl;
+                vidPreview.style.display = 'block';
+
             } else if (file.type === 'application/pdf') {
-                imageControls.style.display = 'block'; // PDF becomes image slides
+                fileBadgeEl.textContent = 'PDF DOCUMENT';
+                fileBadgeEl.className = 'badge badge-text';
+                imageControls.style.display = 'block';
+                pdfPreview.style.display = 'flex';
+                uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reading PDF...';
+                uploadBtn.disabled = true;
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+                    const numPages = pdf.numPages;
+
+                    document.getElementById('pdfPageBadge').textContent = `📄 ${numPages} Page${numPages > 1 ? 's' : ''} (Converts to ${numPages} slide${numPages > 1 ? 's' : ''})`;
+                    uploadBtn.innerHTML = `<i class="fas fa-paper-plane"></i> Push ${numPages} Slide${numPages > 1 ? 's' : ''} to Displays`;
+                    uploadBtn.disabled = false;
+
+                    // Render Page 1 to canvas preview
+                    const page = await pdf.getPage(1);
+                    const viewport = page.getViewport({scale: 0.5});
+                    const canvas = document.getElementById('pdfPreviewCanvas');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    const context = canvas.getContext('2d');
+                    await page.render({canvasContext: context, viewport: viewport}).promise;
+
+                } catch (pdfErr) {
+                    console.error("PDF preview error:", pdfErr);
+                    document.getElementById('pdfPageBadge').textContent = '📄 PDF loaded (Page 1 preview unavailable)';
+                    uploadBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Push PDF to Displays';
+                    uploadBtn.disabled = false;
+                }
             }
         });
 
@@ -1140,8 +1480,12 @@
                     thumb.style.display = 'none';
                 }
 
+                mediaManagement.stage(storagePath).then(() => {
                 const ref = storage.ref(storagePath);
-                const task = ref.put(file);
+                const task = ref.put(file, {
+                    contentType: file.type,
+                    cacheControl: 'public,max-age=31536000,immutable'
+                });
 
                 task.on('state_changed', 
                     snapshot => {
@@ -1160,6 +1504,53 @@
                         });
                     }
                 );
+                }).catch(reject);
+            });
+        }
+
+        // Read duration before upload while the File is locally seekable. Some
+        // fragmented MP4 files initially report Infinity, so force a metadata
+        // seek and wait for durationchange before giving up.
+        function detectVideoDuration(file) {
+            return new Promise(resolve => {
+                const video = document.createElement('video');
+                const objectUrl = URL.createObjectURL(file);
+                let settled = false;
+                let forcedDurationProbe = false;
+
+                function finish(duration) {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeoutId);
+                    video.removeAttribute('src');
+                    video.load();
+                    URL.revokeObjectURL(objectUrl);
+                    resolve(Number.isFinite(duration) && duration > 0 ? duration : null);
+                }
+
+                function readDuration() {
+                    if (Number.isFinite(video.duration) && video.duration > 0) {
+                        finish(video.duration);
+                        return;
+                    }
+                    if (!forcedDurationProbe) {
+                        forcedDurationProbe = true;
+                        try {
+                            video.currentTime = Number.MAX_SAFE_INTEGER;
+                        } catch (error) {
+                            finish(null);
+                        }
+                    }
+                }
+
+                const timeoutId = setTimeout(() => finish(null), 15000);
+                video.preload = 'metadata';
+                video.muted = true;
+                video.onloadedmetadata = readDuration;
+                video.ondurationchange = readDuration;
+                video.ontimeupdate = readDuration;
+                video.onerror = () => finish(null);
+                video.src = objectUrl;
             });
         }
 
@@ -1180,6 +1571,7 @@
                     await handlePdfUpload(file, duration);
                 } else {
                     const isImage = file.type.startsWith('image/');
+                    const videoDuration = isImage ? null : await detectVideoDuration(file);
                     const randomSuffix = Math.random().toString(36).substring(2, 8);
                     const ext = file.name.split('.').pop().toLowerCase();
                     const sanitizedName = `${Date.now()}_${randomSuffix}.${ext}`;
@@ -1189,16 +1581,19 @@
                     
                     const newItem = {
                         url: url,
+                        name: file.name,
                         type: isImage ? 'image' : 'video',
                         storagePath: storagePath,
                         useBackground: false,
                         useMusic: false
                     };
+                    if (!isImage) PanelVideoPosters.capture(document.getElementById('newSlideVideoPreview'), url);
 
                     if (isImage) {
                         newItem.duration = duration;
+                    } else if (videoDuration) {
+                        newItem.duration = videoDuration;
                     }
-
                     let newOrder = 1;
                     if (mediaArray.length > 0) {
                         newOrder = Math.max(...mediaArray.map(item => item.order)) + 1;
@@ -1206,14 +1601,11 @@
                     newItem.order = newOrder;
                     const newId = 'slide_' + Date.now();
 
-                    await db.ref(`dept/${currentDept}/media/${newId}`).set(newItem);
+                    await mediaManagement.publish(newId, newItem);
                 }
 
                 setStatus("Content live on displays!", "success");
-                fileInput.value = '';
-                uploadBtn.disabled = true;
-                imageControls.style.display = 'none';
-                videoControls.style.display = 'none';
+                clearSelectedFile();
             } catch (err) {
                 setStatus(err.message, "error");
                 uploadBtn.disabled = false;
@@ -1265,8 +1657,10 @@
                         useMusic: false
                     };
                     const newId = 'slide_' + Date.now() + '_' + i;
-                    await db.ref(`dept/${currentDept}/media/${newId}`).set(newItem);
+                    await mediaManagement.publish(newId, newItem);
                 }
+                setStatus("PDF slides uploaded and live on displays!", "success");
+                clearSelectedFile();
             } catch (error) {
                 hideLoading();
                 throw error;
@@ -1275,16 +1669,31 @@
 
         // CRUD: Read
         function renderGrid() {
+            // Preserve loaded image nodes across metadata-only edits/reorders.
+            const reusableImages = new Map();
+            mediaGrid.querySelectorAll('.media-card[data-media-id]').forEach(card => {
+                const image = card.querySelector('.preview-container img');
+                if (image) reusableImages.set(card.dataset.mediaId, image);
+            });
             mediaGrid.innerHTML = '';
-            document.getElementById('itemCount').textContent = mediaArray.length + ' items';
+            
+            const activeCount = activeMediaArray.length;
+            const disabledCount = disabledMediaArray.length;
+            document.getElementById('itemCount').textContent = 
+                `${activeCount} active${disabledCount > 0 ? ` (${disabledCount} disabled)` : ''} / ${mediaArray.length} total`;
 
             if (mediaArray.length === 0) {
                 mediaGrid.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:var(--text-gray); padding:2rem;">No items in display loop. Start by uploading content.</p>';
+                return;
             }
 
             mediaArray.forEach((item, index) => {
                 const div = document.createElement('div');
-                div.className = 'media-card';
+                div.dataset.mediaId = item.id;
+                div.className = 'media-card' + (item.disabled ? ' is-disabled' : '');
+                const oldImage = reusableImages.get(String(item.id));
+                const reuseImage = item.type === 'image' && oldImage &&
+                    oldImage.getAttribute('src') === (item.thumbnailUrl || item.url);
                 
                 let badgeClass = 'badge-image';
                 if (item.type === 'video') badgeClass = 'badge-video';
@@ -1292,12 +1701,17 @@
                 
                 let preview = '';
                 if (item.type === 'video') {
-                    preview = `<video src="${item.url}" muted></video>`;
+                    // Only the explicit preview modal downloads video.
+                    const poster = PanelVideoPosters.get(item.url);
+                    const name = PanelVideoPosters.escape(item.name || (item.storagePath || '').split('/').pop() || 'Video slide');
+                    const duration = Number.isFinite(Number(item.duration)) && Number(item.duration)>0 ? Math.round(item.duration)+' sec' : 'Full-length playback';
+                    preview = `<div data-poster-url="${PanelVideoPosters.escape(item.url)}" class="video-hint">${poster ? `<img src="${poster}" alt="Video frame">` : `<i class="fas fa-play-circle"></i><strong title="${name}">${name}</strong><small>${duration} · Open Preview to capture a frame</small>`}</div>`;
                 } else if (item.type === 'text') {
                     const cleanText = item.content.replace(/</g, "&lt;");
                     preview = `<div style="width:100%; height:100%; background:${item.bgColor || '#000'}; color:${item.textColor || '#fff'}; display:flex; justify-content:center; align-items:center; text-align:center; padding:10px; box-sizing:border-box; font-size:14px; font-weight:bold; overflow:hidden; white-space: pre-wrap;">${cleanText.substring(0,50)}${item.content.length>50?'...':''}</div>`;
                 } else {
-                    preview = `<img src="${item.url}" alt="Preview">`;
+                    preview = reuseImage ? '<span data-reused-image></span>' :
+                        `<img src="${item.thumbnailUrl || item.url}" loading="lazy" decoding="async" alt="Preview">`;
                 }
 
                 let durationHtml = '';
@@ -1343,35 +1757,48 @@
                     editBtnHtml = `<button class="btn-sm btn-update" onclick="openEditTextModal('${item.id}')"><i class="fas fa-edit"></i> Edit</button>`;
                 }
 
+                const disableBtnHtml = item.disabled 
+                    ? `<button class="btn-sm btn-enable" onclick="toggleDisableSlide('${item.id}', false)" title="Enable this slide on displays"><i class="fas fa-eye"></i> Enable</button>`
+                    : `<button class="btn-sm btn-disable" onclick="toggleDisableSlide('${item.id}', true)" title="Disable this slide from displays"><i class="fas fa-eye-slash"></i> Disable</button>`;
+
+                const statusBadgeHtml = item.disabled
+                    ? `<span class="badge badge-disabled" style="top:10px; left:10px; right:auto;"><i class="fas fa-ban"></i> Disabled</span>`
+                    : '';
+
                 div.innerHTML = `
                     ${orderControls}
-                    <div class="preview-container">
+                    <div class="preview-container" onclick="openSlidePreview(${index})" title="Click to inspect slide in 16:9 full view">
                         ${preview}
+                        ${statusBadgeHtml}
                         <span class="badge ${badgeClass}">${item.type}</span>
+                        <div class="preview-hover-overlay"><i class="fas fa-search-plus"></i>&nbsp;Preview</div>
                     </div>
                     <div class="media-content">
                         ${durationHtml}
                         ${backgroundControls}
                         ${musicControls}
                     </div>
-                    <div class="actions">
+                    <div class="actions" style="flex-wrap:wrap;">
+                        <button class="btn-sm btn-preview" onclick="openSlidePreview(${index})"><i class="fas fa-expand"></i> Preview</button>
+                        ${disableBtnHtml}
                         ${editBtnHtml}
                         <button class="btn-sm btn-delete" onclick="deleteItem('${item.id}')"><i class="fas fa-trash"></i> Remove</button>
                     </div>
                 `;
+                if (reuseImage) div.querySelector('[data-reused-image]').replaceWith(oldImage);
                 mediaGrid.appendChild(div);
             });
         }
 
-        // CRUD: Reorder
+        // CRUD: Reorder (cross-node safe)
         function moveUp(index) {
             if (index === 0) return;
             const current = mediaArray[index];
             const previous = mediaArray[index - 1];
             
             const updates = {};
-            updates[`dept/${currentDept}/media/${current.id}/order`] = previous.order;
-            updates[`dept/${currentDept}/media/${previous.id}/order`] = current.order;
+            updates[`dept/${currentDept}/${getNodePath(current.id)}/${current.id}/order`] = previous.order;
+            updates[`dept/${currentDept}/${getNodePath(previous.id)}/${previous.id}/order`] = current.order;
             
             db.ref().update(updates);
         }
@@ -1382,26 +1809,26 @@
             const next = mediaArray[index + 1];
             
             const updates = {};
-            updates[`dept/${currentDept}/media/${current.id}/order`] = next.order;
-            updates[`dept/${currentDept}/media/${next.id}/order`] = current.order;
+            updates[`dept/${currentDept}/${getNodePath(current.id)}/${current.id}/order`] = next.order;
+            updates[`dept/${currentDept}/${getNodePath(next.id)}/${next.id}/order`] = current.order;
             
             db.ref().update(updates);
         }
 
-        // CRUD: Update
+        // CRUD: Update (cross-node safe)
         function updateDuration(id, newVal) {
             const val = parseInt(newVal);
             if (val > 0) {
-                db.ref(`dept/${currentDept}/media/${id}/duration`).set(val);
+                db.ref(`dept/${currentDept}/${getNodePath(id)}/${id}/duration`).set(val);
             }
         }
 
         function updateBackground(id, checked) {
-            db.ref(`dept/${currentDept}/media/${id}/useBackground`).set(checked);
+            db.ref(`dept/${currentDept}/${getNodePath(id)}/${id}/useBackground`).set(checked);
         }
 
         function updateMusic(id, checked) {
-            db.ref(`dept/${currentDept}/media/${id}/useMusic`).set(checked);
+            db.ref(`dept/${currentDept}/${getNodePath(id)}/${id}/useMusic`).set(checked);
         }
 
         function showLoading(text) {
@@ -1413,24 +1840,202 @@
             document.getElementById('loadingOverlay').style.display = 'none';
         }
 
-        // CRUD: Delete
+        // CRUD: Delete (cross-node safe)
         async function deleteItem(id) {
             if (!checkRateLimit('deletes', 10)) return;
             if (confirm("Permanently remove this item from display?")) {
-                const item = mediaMap[id];
+                const item = getItemById(id);
+                const node = getNodePath(id);
                 showLoading("Deleting slide...");
                 
                 try {
-                    if (item && item.storagePath) {
-                        await storage.ref(item.storagePath).delete().catch(e => console.warn("Storage deletion error", e));
+                    await mediaManagement.remove(node, id, item);
+                    if (currentPreviewIndex >= 0 && mediaArray[currentPreviewIndex] && mediaArray[currentPreviewIndex].id === id) {
+                        closeSlidePreview();
                     }
-                    await db.ref(`dept/${currentDept}/media/${id}`).remove();
                     hideLoading();
                 } catch(e) {
                     hideLoading();
                     alert("Error deleting: " + e.message);
                 }
             }
+        }
+
+        // --- ZERO-EGRESS SLIDE ARCHIVING (DISABLE / ENABLE) ---
+        async function toggleDisableSlide(slideId, disableState) {
+            if (!checkRateLimit('writes', 20)) return;
+            showLoading(disableState ? "Disabling slide..." : "Enabling slide...");
+            try {
+                const updates = {};
+                if (disableState) {
+                    // Disabling: move atomically from media to disabled_media
+                    const item = activeMediaMap[slideId] || mediaArray.find(s => s.id === slideId);
+                    if (!item) throw new Error("Slide not found in active list");
+                    const cloned = Object.assign({}, item);
+                    cloned.disabled = true;
+                    updates[`dept/${currentDept}/disabled_media/${slideId}`] = cloned;
+                    updates[`dept/${currentDept}/media/${slideId}`] = null;
+                } else {
+                    // Enabling: move atomically from disabled_media to media
+                    const item = disabledMediaMap[slideId] || mediaArray.find(s => s.id === slideId);
+                    if (!item) throw new Error("Slide not found in disabled list");
+                    const cloned = Object.assign({}, item);
+                    delete cloned.disabled;
+                    updates[`dept/${currentDept}/media/${slideId}`] = cloned;
+                    updates[`dept/${currentDept}/disabled_media/${slideId}`] = null;
+                }
+                await db.ref().update(updates);
+                hideLoading();
+            } catch (e) {
+                hideLoading();
+                alert("Failed to toggle slide status: " + e.message);
+            }
+        }
+
+        // --- SLIDE PREVIEW MODAL HANDLERS ---
+        let currentPreviewIndex = -1;
+        let previewGeneration = 0;
+
+        function openSlidePreview(index) {
+            if (index < 0 || index >= mediaArray.length) return;
+            currentPreviewIndex = index;
+            document.getElementById('slidePreviewModal').style.display = 'flex';
+            renderModalSlide();
+            window.addEventListener('keydown', handlePreviewKeyDown);
+        }
+
+        function closeSlidePreview() {
+            previewGeneration++;
+            const modal = document.getElementById('slidePreviewModal');
+            modal.style.display = 'none';
+            const vid = document.getElementById('previewModalVideo');
+            vid.onerror = vid.onloadeddata = null;
+            vid.pause();
+            vid.removeAttribute('src'); vid.load();
+            document.getElementById('previewModalImg').removeAttribute('src');
+            currentPreviewIndex = -1;
+            window.removeEventListener('keydown', handlePreviewKeyDown);
+        }
+
+        function handlePreviewKeyDown(e) {
+            if (e.key === 'Escape') {
+                closeSlidePreview();
+            } else if (e.key === 'ArrowLeft') {
+                navigateSlidePreview(-1);
+            } else if (e.key === 'ArrowRight') {
+                navigateSlidePreview(1);
+            }
+        }
+
+        function navigateSlidePreview(direction) {
+            if (mediaArray.length === 0) return;
+            let nextIndex = currentPreviewIndex + direction;
+            if (nextIndex < 0) nextIndex = mediaArray.length - 1;
+            if (nextIndex >= mediaArray.length) nextIndex = 0;
+            currentPreviewIndex = nextIndex;
+            renderModalSlide();
+        }
+
+        function renderModalSlide() {
+            if (currentPreviewIndex < 0 || currentPreviewIndex >= mediaArray.length) return;
+            const item = mediaArray[currentPreviewIndex];
+            
+            document.getElementById('previewModalTitle').textContent = `Slide #${currentPreviewIndex + 1} of ${mediaArray.length}`;
+            
+            // Badges
+            const typeBadge = document.getElementById('previewModalTypeBadge');
+            typeBadge.textContent = item.type.toUpperCase();
+            typeBadge.className = 'badge ' + (item.type === 'video' ? 'badge-video' : item.type === 'text' ? 'badge-text' : 'badge-image');
+            
+            const statusBadge = document.getElementById('previewModalStatusBadge');
+            if (item.disabled) {
+                statusBadge.textContent = 'DISABLED';
+                statusBadge.className = 'badge badge-disabled';
+            } else {
+                statusBadge.textContent = 'ACTIVE';
+                statusBadge.className = 'badge badge-image';
+            }
+
+            // Media elements
+            const imgEl = document.getElementById('previewModalImg');
+            const vidEl = document.getElementById('previewModalVideo');
+            const txtEl = document.getElementById('previewModalText');
+            const generation = ++previewGeneration;
+            vidEl.onerror = imgEl.onerror = null;
+            const errorId = 'previewLoadError';
+            const oldError = document.getElementById(errorId); if (oldError) oldError.remove();
+            function previewError() {
+                if (generation !== previewGeneration || document.getElementById('slidePreviewModal').style.display === 'none') return;
+                const element = item.type === 'video' ? vidEl : imgEl;
+                if (!['video','image'].includes(item.type) || element.getAttribute('src') !== item.url || (item.type === 'video' && vidEl.error?.code === 1)) return;
+                if (document.getElementById(errorId)) return;
+                const message = document.createElement('p'); message.id = errorId;
+                message.style.cssText = 'position:absolute;bottom:10px;left:10px;right:10px;background:#182235;padding:12px;color:white;z-index:5';
+                message.textContent = 'Media could not load. Check your connection or the Cloudflare/B2 service; the slide has not been changed.';
+                const retry = document.createElement('button');retry.type='button';retry.className='btn-sm btn-update';retry.textContent='Retry preview';
+                retry.onclick=()=>{message.remove();if(item.type==='video'){vidEl.load();}else{imgEl.removeAttribute('src');imgEl.src=item.url;}};
+                message.append(document.createElement('br'),retry);
+                imgEl.parentElement.appendChild(message);
+            }
+            imgEl.onerror = previewError; vidEl.onerror = previewError;
+            function previewReady(){if(generation!==previewGeneration)return;const error=document.getElementById(errorId);if(error)error.remove();}
+            imgEl.onload=previewReady;
+            vidEl.onloadeddata=()=>{previewReady();if(generation===previewGeneration&&item.type==='video')PanelVideoPosters.capture(vidEl,item.url);};
+            vidEl.crossOrigin='anonymous';
+
+            imgEl.style.display = 'none';
+            vidEl.pause();
+            vidEl.style.display = 'none';
+            txtEl.style.display = 'none';
+
+            if (item.type === 'image') {
+                if (imgEl.getAttribute('src') !== item.url) imgEl.src = item.url;
+                imgEl.style.display = 'block';
+            } else if (item.type === 'video') {
+                if (vidEl.getAttribute('src') !== item.url) { vidEl.src = item.url; vidEl.load(); }
+                vidEl.style.display = 'block';
+            } else if (item.type === 'text') {
+                txtEl.textContent = item.content;
+                txtEl.style.background = item.bgColor || '#000';
+                txtEl.style.color = item.textColor || '#fff';
+                txtEl.style.display = 'flex';
+            }
+
+            // Metadata
+            document.getElementById('previewModalDuration').textContent = (item.type === 'video') ? 'Plays full length' : `${item.duration}s`;
+            document.getElementById('previewModalBg').textContent = item.useBackground ? 'Enabled' : 'Disabled';
+            document.getElementById('previewModalMusic').textContent = item.useMusic ? 'Enabled' : 'Disabled';
+
+            // Disable / Enable button inside modal
+            const disableBtn = document.getElementById('previewModalDisableBtn');
+            if (item.disabled) {
+                disableBtn.className = 'btn-sm btn-enable';
+                disableBtn.innerHTML = '<i class="fas fa-eye"></i> Enable Slide';
+            } else {
+                disableBtn.className = 'btn-sm btn-disable';
+                disableBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Disable Slide';
+            }
+
+            // Edit button (if text)
+            const editBtn = document.getElementById('previewModalEditBtn');
+            if (item.type === 'text') {
+                editBtn.style.display = 'inline-block';
+            } else {
+                editBtn.style.display = 'none';
+            }
+        }
+
+        function toggleDisableCurrentPreview() {
+            if (currentPreviewIndex < 0 || currentPreviewIndex >= mediaArray.length) return;
+            const item = mediaArray[currentPreviewIndex];
+            toggleDisableSlide(item.id, !item.disabled);
+        }
+
+        function editCurrentPreviewText() {
+            if (currentPreviewIndex < 0 || currentPreviewIndex >= mediaArray.length) return;
+            const item = mediaArray[currentPreviewIndex];
+            closeSlidePreview();
+            openEditTextModal(item.id);
         }
 
         // ==========================================
@@ -1478,10 +2083,7 @@
             if (confirm("Delete this background image?")) {
                 showLoading("Deleting background...");
                 try {
-                    if (currentBackground && currentBackground.storagePath) {
-                        await storage.ref(currentBackground.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
-                    }
-                    await db.ref(`dept/${currentDept}/background`).remove();
+                    await mediaManagement.remove('background', null, currentBackground);
                     hideLoading();
                 } catch(e) {
                     hideLoading();
@@ -1540,10 +2142,7 @@
             if (confirm("Delete this music file?")) {
                 showLoading("Deleting music...");
                 try {
-                    if (currentMusicObj && currentMusicObj.storagePath) {
-                        await storage.ref(currentMusicObj.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
-                    }
-                    await db.ref(`dept/${currentDept}/music`).remove();
+                    await mediaManagement.remove('music', null, currentMusicObj);
                     hideLoading();
                 } catch(e) {
                     hideLoading();
@@ -1614,7 +2213,7 @@
             try {
                 const { url } = await uploadWithProgressUI(file, storagePath, "Uploading Background");
                 const newItem = { url: url, storagePath: storagePath };
-                await db.ref(`dept/${currentDept}/background`).set(newItem);
+                await mediaManagement.replace('background', newItem);
                 
                 setStatus("Background image uploaded!", "success");
                 document.getElementById('bgFileInput').value = '';
@@ -1643,7 +2242,7 @@
             try {
                 const { url } = await uploadWithProgressUI(file, storagePath, "Uploading Music");
                 const newItem = { url: url, storagePath: storagePath, name: file.name };
-                await db.ref(`dept/${currentDept}/music`).set(newItem);
+                await mediaManagement.replace('music', newItem);
                 
                 setStatus("Music file uploaded!", "success");
                 document.getElementById('musicFileInput').value = '';
@@ -1700,7 +2299,8 @@
         }
 
         function openEditTextModal(id) {
-            const item = mediaMap[id];
+            const item = getItemById(id);
+            if (!item) return;
             document.getElementById('editIndex').value = id;
             document.getElementById('editContent').value = item.content;
             document.getElementById('editBg').value = item.bgColor || '#000000';
@@ -1714,7 +2314,8 @@
             if (!checkRateLimit('writes', 20)) return;
 
             const id = document.getElementById('editIndex').value;
-            const item = mediaMap[id];
+            const item = getItemById(id);
+            if (!item) return;
             
             item.content = document.getElementById('editContent').value.trim();
             item.bgColor = document.getElementById('editBg').value;
@@ -1726,7 +2327,8 @@
                 return;
             }
 
-            db.ref(`dept/${currentDept}/media/${id}`).set(item).then(() => {
+            const node = getNodePath(id);
+            db.ref(`dept/${currentDept}/${node}/${id}`).set(item).then(() => {
                 document.getElementById('textEditModal').style.display = 'none';
             });
         }

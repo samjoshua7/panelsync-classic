@@ -1,1 +1,10 @@
 firebase_db.json
+.migration-private/
+r2-migration/node_modules/
+r2-migration/.wrangler/
+r2-migration/.dev.vars*
+r2-migration/config.local.json
+b2-migration/.wrangler/
+b2-migration/.dev.vars*
+b2-migration/config.local.json
+/.wrangler/

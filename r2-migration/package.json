@@ -1,0 +1,14 @@
+{
+  "name": "panelsync-r2-staging",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build": "node build.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "acorn": "8.19.0",
+    "wrangler": "^4.0.0"
+  }
+}
