@@ -19,14 +19,18 @@ export function transform(name, source, config) {
   if (!pattern.test(source)) throw new Error('Firebase configuration location changed; refusing unsafe build');
   let result = source.replace(pattern, (_, declaration) => declaration + JSON.stringify(config.firebase, null, 12) + ';');
   if (name === 'admin.html') {
-    if (!result.includes('const storage = firebase.storage();')) throw new Error('Storage integration location changed');
-    result = result.replace('const storage = firebase.storage();', `const storage = window.PanelB2Storage(auth, ${JSON.stringify(config.mediaApi.replace(/\/$/, ''))});`);
+    const storageLine = `const storage = window.PanelB2Storage(auth, ${JSON.stringify(config.mediaApi.replace(/\/$/, ''))});`;
+    if (result.includes('const storage = firebase.storage();')) result = result.replace('const storage = firebase.storage();', storageLine);
+    else if (result.includes('const storage = window.PanelB2Storage(')) result = result.replace(/const storage = window.PanelB2Storage\(auth, [^\n]+\);/, storageLine);
+    else throw new Error('Storage integration location changed');
+    if (!result.includes('<script src="browser-storage.js">')) {
     result = result.replace(/(<script>\s*\/\/ Firebase Configuration)/, '<script src="browser-storage.js"></script>\n$1');
     if (!result.includes('<script src="browser-storage.js">')) {
       // The admin's inline block has a different comment from the login page.
       result = result.replace(/(<script>\s*(?:const|\/\/)[\s\S]*?const firebaseConfig)/, '<script src="browser-storage.js"></script>\n$1');
     }
     if (!result.includes('<script src="browser-storage.js">')) throw new Error('Cannot inject staging storage adapter safely');
+    }
     // Never swallow storage deletion errors and then erase metadata in the staging version.
     result = result.replace(/await storage\.ref\(([^\n]+?)\)\.delete\(\)\.catch\([^\n]+\);/g, 'await storage.ref($1).delete();');
   }
@@ -44,6 +48,7 @@ export function build(config, output, root) {
   for (const [name, content] of Object.entries(files)) fs.writeFileSync(path.join(output, name), content);
   fs.copyFileSync(path.join(root, 'media-cache.js'), path.join(output, 'media-cache.js'));
   fs.copyFileSync(new URL('./browser-storage.js', import.meta.url), path.join(output, 'browser-storage.js'));
+  for (const name of ['access-control.js', 'media-management.js']) fs.copyFileSync(path.join(root, name), path.join(output, name));
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const configPath = process.argv[2];

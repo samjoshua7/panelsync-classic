@@ -1,5 +1,33 @@
 # PanelSync Classic - Multi-Department Digital Signage
 
+## Current local app (new backend)
+
+The root HTML now uses Firebase `fx-panelsync` for Google sign-in and metadata,
+Cloudflare Workers for authenticated media management, and private Backblaze B2
+for media bytes. Firebase Storage / `civic-voice-530e3` is not used by this local
+app. Historical Firebase-only instructions below describe the old deployment;
+do not paste those rules into the new project.
+
+Run `node serve-app.mjs`, then open http://127.0.0.1:5502/ . The published GitHub
+Pages version does not change until the deployment branch is updated/published.
+No push or publication is performed by the local server.
+
+The dashboard verifies real Firebase identity and current department membership;
+sessionStorage cannot grant access. Only global role 3 crosses departments.
+Deleting media removes active/archive metadata and writes a cleanup job
+atomically, then removes B2 bytes and its Worker quota entry. Failures remain
+visible for retry, including abandoned uploads. Cleanup retries while an
+authorized dashboard is open; this is not an always-running backend scheduler.
+
+Independent services and offline devices cannot guarantee immediate removal of
+every copy. Shared files remain until no playlist references them. Old deployed
+Firebase media, historical backups and offline browser caches are not silently
+purged. Do not claim unlimited free service: account caps and free quotas can
+stop service, and the app storage cap is not a bandwidth/spend cap.
+
+Tests: `node --test tests/access-control.test.cjs tests/media-management.test.cjs b2-migration/tests/*.test.mjs`,
+`node tests/media-cache.test.cjs`, and `node tests/display-sync.test.cjs`.
+
 ## Overview
 
 A scalable Firebase-based digital signage system supporting multiple isolated departments with background images and music.

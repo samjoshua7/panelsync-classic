@@ -11,6 +11,9 @@ export function validType(folder, type) {
 }
 function json(value, status = 200) { return Response.json(value, { status }); }
 function origins(env) { return (env.ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean); }
+function allowedOrigin(origin, env) {
+  return origins(env).includes(origin) || (env.ALLOW_LOCALHOST === 'true' && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin));
+}
 function cors(response, origin) {
   const headers = new Headers(response.headers);
   headers.set('Access-Control-Allow-Origin', origin);
@@ -59,7 +62,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url), origin = request.headers.get('Origin');
     // CORS is a browser policy, not protection against non-browser traffic.
-    if (origin && !origins(env).includes(origin)) return new Response('Origin not allowed', { status: 403 });
+    if (origin && !allowedOrigin(origin, env)) return new Response('Origin not allowed', { status: 403 });
     const respond = response => origin ? cors(response, origin) : response;
     if (request.method === 'OPTIONS') return respond(new Response(null, { status: 204 }));
     try {
@@ -110,16 +113,23 @@ export class MediaQuota {
       const found = await this.transaction(state => {
         const entry = state.files[key];
         if (!entry) return false;
-        if (entry.state !== 'stored') throw new Error('Object busy');
+        if (entry.state === 'uploading' && Date.now() - entry.since < 15 * 60 * 1000) throw new Error('Upload still active; retry cleanup after 15 minutes');
+        if (!['stored', 'uploading'].includes(entry.state)) throw new Error('Object busy');
+        entry.previousState = entry.state;
         entry.state = 'deleting'; return true;
       });
       if (!found) return json({ error: 'Unknown object; refusing untracked deletion' }, 404);
       try {
         await this.env.MEDIA.delete(key);
-        await this.transaction(state => { state.used -= state.files[key].size; delete state.files[key]; });
+        await this.transaction(state => {
+          const entry = state.files[key];
+          if (entry.previousState === 'uploading') state.reserved -= entry.size;
+          else state.used -= entry.size;
+          delete state.files[key];
+        });
         return json({ deleted: true });
       } catch (e) {
-        await this.transaction(state => { state.files[key].state = 'stored'; });
+        await this.transaction(state => { const entry = state.files[key]; entry.state = entry.previousState; delete entry.previousState; });
         return json({ error: 'Deletion failed; quota unchanged' }, 503);
       }
     }

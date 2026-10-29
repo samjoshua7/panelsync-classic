@@ -37,9 +37,17 @@ export class B2Storage {
     const auth = await this.authorize();
     const headers = { Authorization: auth.token };
     if (range) headers.Range = `bytes=${range.offset}-${range.offset + range.length - 1}`;
-    const response = await this.fetcher(auth.downloadUrl + '/file/' + encodeURIComponent(this.env.B2_BUCKET_NAME) + '/' + encodePath(key), {
-      method, headers, signal: AbortSignal.timeout(45000)
-    });
+    // Bound the wait for B2 response headers, not the complete video transfer.
+    // A fixed whole-response deadline would cut off otherwise healthy playback
+    // on a slow TV connection. The display already guards stalled playback.
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 45000);
+    let response;
+    try {
+      response = await this.fetcher(auth.downloadUrl + '/file/' + encodeURIComponent(this.env.B2_BUCKET_NAME) + '/' + encodePath(key), {
+        method, headers, signal: controller.signal
+      });
+    } finally { clearTimeout(deadline); }
     if (response.status === 404) return null;
     if (!response.ok) { if (response.status === 401) this.auth = null; throw new Error('B2 download failed'); }
     return response;

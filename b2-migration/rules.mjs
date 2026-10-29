@@ -12,13 +12,16 @@ export function destinationRules() {
   return { rules: {
     '.read': false, '.write': false,
     depts: { '.read': true, '.write': `${signed} && ${superUser}` },
-    users: { '.read': signed, '.write': `${signed} && ${superUser}` },
+    users: { '.read': `${signed} && ${superUser}`, '.write': `${signed} && ${superUser}`,
+      '$user': { '.read': `${signed} && $user === ${key}` }
+    },
     dept: { '$dept': {
       media: { ...content, '.indexOn': ['order'] },
       disabled_media: { '.read': editor, '.write': editor, '.indexOn': ['order'] },
       settings: content, background: content, music: content,
-      users: { '.read': signed, '.write': manager,
-        '$user': { '.validate': "newData.hasChildren(['email', 'roleLevel', 'active']) && newData.child('email').isString() && newData.child('active').isBoolean() && (newData.child('roleLevel').val() === 1 || newData.child('roleLevel').val() === 2)" }
+      cleanup_jobs: { '.read': editor, '.write': editor },
+      users: { '.read': manager, '.write': manager,
+        '$user': { '.read': `${signed} && $user === ${key}`, '.validate': "newData.hasChildren(['email', 'roleLevel', 'active']) && newData.child('email').isString() && newData.child('active').isBoolean() && (newData.child('roleLevel').val() === 1 || newData.child('roleLevel').val() === 2)" }
       }
     } }
   } };

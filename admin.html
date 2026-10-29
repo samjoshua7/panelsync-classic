@@ -328,7 +328,6 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -397,10 +396,10 @@
                 <img id="previewModalImg" src="" alt="Slide Preview" style="display: none; max-width: 100%; max-height: 100%; object-fit: contain;">
                 
                 <!-- Video Display -->
-                <video id="previewModalVideo" controls style="display: none; width: 100%; height: 100%; object-fit: contain;"></video>
+                <video id="previewModalVideo" controls preload="metadata" style="display: none; width: 100%; height: 100%; object-fit: contain;"></video>
                 
                 <!-- Text Slide Display -->
-                <div id="previewModalText" style="display: none; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; text-align: center; font-size: 2.2rem; font-weight: bold; padding: 2.5rem; box-sizing: border-box; white-space: pre-wrap; word-break: break-word;"></div>
+                <div id="previewModalText" style="display: none; width: 100%; height: 100%; justify-content: center; align-items: center; text-align: center; font-size: 2.2rem; font-weight: bold; padding: 2.5rem; box-sizing: border-box; white-space: pre-wrap; word-break: break-word;"></div>
 
                 <!-- Floating Navigation Buttons -->
                 <button class="modal-nav-btn modal-nav-prev" onclick="navigateSlidePreview(-1)" title="Previous Slide (Left Arrow)"><i class="fas fa-chevron-left"></i></button>
@@ -684,30 +683,29 @@
         </section>
     </main>
 
-    <script>
+<script src="access-control.js"></script>
+<script src="media-management.js"></script>
+<script src="browser-storage.js"></script>
+<script>
         // ==========================================
         // SECURITY & CONFIG
         // ==========================================
-        if (sessionStorage.getItem('auth') !== 'true') {
-            window.location.href = 'index.html';
-        }
+        // Access is verified from Firebase below before revealing the dashboard.
 
         const firebaseConfig = {
-            apiKey: "AIzaSyC3TwG6SAgrBcVoHHPEWDl8DluGldZTYcs",
-            authDomain: "civic-voice-530e3.firebaseapp.com",
-            databaseURL: "https://civic-voice-530e3-default-rtdb.firebaseio.com",
-            projectId: "civic-voice-530e3",
-            storageBucket: "civic-voice-530e3.firebasestorage.app",
-            messagingSenderId: "445788979324",
-            appId: "1:445788979324:web:7d454068b866150f0c49f9",
-            measurementId: "G-QGZD0JBDVH"
-        };
+          "apiKey": "AIzaSyBRSB0PEpJHQyFo7PiduGuTmZPDtnZdjv4",
+          "authDomain": "fx-panelsync.firebaseapp.com",
+          "databaseURL": "https://fx-panelsync-default-rtdb.firebaseio.com",
+          "projectId": "fx-panelsync",
+          "appId": "1:634441644723:web:68d490a0eefef398d14ec6",
+          "messagingSenderId": "634441644723"
+};
 
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 
         const auth = firebase.auth();
         const db = firebase.database();
-        const storage = firebase.storage();
+        const storage = window.PanelB2Storage(auth, "https://panelsync-b2-staging.fxodapp.workers.dev");
 
         // ==========================================
         // RATE LIMITING & SECURITY
@@ -795,17 +793,28 @@
         // ==========================================
         const urlParams = new URLSearchParams(window.location.search);
         const currentDept = urlParams.get('dept');
+        const mediaManagement = currentDept ? PanelMediaManagement(db, storage, currentDept) : null;
 
         document.querySelector('nav').style.display = 'none';
         document.querySelector('main').style.display = 'none';
 
-        db.ref('depts').once('value').then(snapshot => {
-            const depts = snapshot.val() || {};
-            const allowedDepts = Object.keys(depts);
+        PanelAccess.resolve(auth, db, currentDept).then(access => {
+            const depts = access.depts;
+            const allowedDepts = Object.keys(access.roles);
+            const roleLevel = access.role;
+            sessionStorage.setItem('auth', 'true');
+            sessionStorage.setItem('adminEmail', access.email);
+            sessionStorage.setItem('roleLevel', String(roleLevel));
+            // Revocation and role changes invalidate the open panel too.
+            function watchRole(path) {
+                let initial = true;
+                db.ref(path).on('value', () => { if (initial) initial = false; else location.reload(); });
+            }
+            watchRole('users/' + access.userKey);
+            if (currentDept) watchRole('dept/' + currentDept + '/users/' + access.userKey);
+            auth.onAuthStateChanged(user => { if (!user) location.replace('index.html'); });
 
-            const roleLevel = parseInt(sessionStorage.getItem('roleLevel')) || 0;
-
-            if (allowedDepts.length === 0) {
+            if (Object.keys(depts).length === 0) {
                 // BOOTSTRAP MODE
                 if (roleLevel === 3) {
                     document.getElementById('bootstrapOverlay').style.display = 'flex';
@@ -864,6 +873,15 @@
 
                 initAdminData();
             }
+        }).catch(error => {
+            sessionStorage.clear();
+            document.querySelector('main').style.display = 'none';
+            document.getElementById('loadingOverlay').style.display = 'none';
+            const notice = document.createElement('div');
+            notice.style.cssText = 'max-width:620px;margin:80px auto;padding:30px;background:var(--card-bg,#182235);border-radius:16px;color:white;font:18px system-ui';
+            const message = document.createElement('p'); message.textContent = error.message;
+            const link = document.createElement('a'); link.href = 'index.html'; link.textContent = 'Return to department sign-in';
+            notice.append(message, link); document.body.appendChild(notice);
         });
 
         let mediaArray = [];
@@ -900,6 +918,8 @@
             });
 
             mediaArray.sort((a, b) => (a.order || 999) - (b.order || 999));
+            const summary = document.getElementById('playlistSummary');
+            if (summary) summary.textContent = activeMediaArray.length + ' active · ' + disabledMediaArray.length + ' disabled · ' + mediaArray.length + ' total slides';
             renderGrid();
             if (currentPreviewIndex >= 0 && document.getElementById('slidePreviewModal').style.display === 'flex') {
                 renderModalSlide();
@@ -916,6 +936,18 @@
         const adminEmail = document.getElementById('adminEmail');
 
         function initAdminData() {
+            const flow = document.createElement('section');
+            flow.className = 'card'; flow.style.cssText = 'grid-column:1/-1;padding:18px';
+            flow.innerHTML = '<h3>PanelSync · New backend</h3><p>Google sign-in &amp; playlists: Firebase fx-panelsync → media gateway: Cloudflare → files: Backblaze B2</p><p>1. Select and preview → 2. Upload → 3. Preview published slide → 4. Enable or disable. Deletion removes the playlist entry first and tracks storage cleanup.</p><p id="playlistSummary" role="status"></p><p id="cleanupStatus" role="status">Checking cleanup…</p><button id="retryCleanup" type="button">Retry cleanup</button>';
+            document.querySelector('main').prepend(flow);
+            document.getElementById('retryCleanup').onclick = () => mediaManagement.retry().catch(error => alert(error.message));
+            db.ref(`dept/${currentDept}/cleanup_jobs`).on('value', snapshot => {
+                const jobs = Object.values(snapshot.val() || {});
+                const uploading = jobs.filter(j => j.uploadUntil > Date.now()).length;
+                document.getElementById('cleanupStatus').textContent = jobs.length ? uploading + ' upload(s) awaiting publication; ' + (jobs.length - uploading) + ' pending cleanup job(s). ' + (jobs.find(j => j.error)?.error || '') : 'No pending storage cleanup.';
+            }, error => { document.getElementById('cleanupStatus').textContent = 'Cleanup status unavailable: ' + error.message; });
+            mediaManagement.retry().catch(console.error);
+            setInterval(() => mediaManagement.retry().catch(console.warn), 60000);
             adminEmail.textContent = sessionStorage.getItem('adminEmail');
             
             // Listen to active slides (dept/{dept}/media)
@@ -1443,6 +1475,7 @@
                     thumb.style.display = 'none';
                 }
 
+                mediaManagement.stage(storagePath).then(() => {
                 const ref = storage.ref(storagePath);
                 const task = ref.put(file, {
                     contentType: file.type,
@@ -1466,6 +1499,7 @@
                         });
                     }
                 );
+                }).catch(reject);
             });
         }
 
@@ -1560,7 +1594,7 @@
                     newItem.order = newOrder;
                     const newId = 'slide_' + Date.now();
 
-                    await db.ref(`dept/${currentDept}/media/${newId}`).set(newItem);
+                    await mediaManagement.publish(newId, newItem);
                 }
 
                 setStatus("Content live on displays!", "success");
@@ -1616,7 +1650,7 @@
                         useMusic: false
                     };
                     const newId = 'slide_' + Date.now() + '_' + i;
-                    await db.ref(`dept/${currentDept}/media/${newId}`).set(newItem);
+                    await mediaManagement.publish(newId, newItem);
                 }
                 setStatus("PDF slides uploaded and live on displays!", "success");
                 clearSelectedFile();
@@ -1805,10 +1839,7 @@
                 showLoading("Deleting slide...");
                 
                 try {
-                    if (item && item.storagePath) {
-                        await storage.ref(item.storagePath).delete().catch(e => console.warn("Storage deletion error", e));
-                    }
-                    await db.ref(`dept/${currentDept}/${node}/${id}`).remove();
+                    await mediaManagement.remove(node, id, item);
                     if (currentPreviewIndex >= 0 && mediaArray[currentPreviewIndex] && mediaArray[currentPreviewIndex].id === id) {
                         closeSlidePreview();
                     }
@@ -1867,7 +1898,8 @@
             modal.style.display = 'none';
             const vid = document.getElementById('previewModalVideo');
             vid.pause();
-            vid.src = '';
+            vid.removeAttribute('src'); vid.load();
+            document.getElementById('previewModalImg').removeAttribute('src');
             currentPreviewIndex = -1;
             window.removeEventListener('keydown', handlePreviewKeyDown);
         }
@@ -1915,6 +1947,16 @@
             const imgEl = document.getElementById('previewModalImg');
             const vidEl = document.getElementById('previewModalVideo');
             const txtEl = document.getElementById('previewModalText');
+            const errorId = 'previewLoadError';
+            const oldError = document.getElementById(errorId); if (oldError) oldError.remove();
+            function previewError() {
+                if (document.getElementById(errorId)) return;
+                const message = document.createElement('p'); message.id = errorId;
+                message.style.cssText = 'position:absolute;bottom:10px;left:10px;right:10px;background:#182235;padding:12px;color:white;z-index:5';
+                message.textContent = 'Media could not load. Check your connection or the Cloudflare/B2 service; the slide has not been changed.';
+                imgEl.parentElement.appendChild(message);
+            }
+            imgEl.onerror = previewError; vidEl.onerror = previewError;
 
             imgEl.style.display = 'none';
             vidEl.pause();
@@ -1922,10 +1964,10 @@
             txtEl.style.display = 'none';
 
             if (item.type === 'image') {
-                imgEl.src = item.url;
+                if (imgEl.getAttribute('src') !== item.url) imgEl.src = item.url;
                 imgEl.style.display = 'block';
             } else if (item.type === 'video') {
-                vidEl.src = item.url;
+                if (vidEl.getAttribute('src') !== item.url) { vidEl.src = item.url; vidEl.load(); }
                 vidEl.style.display = 'block';
             } else if (item.type === 'text') {
                 txtEl.textContent = item.content;
@@ -2016,10 +2058,7 @@
             if (confirm("Delete this background image?")) {
                 showLoading("Deleting background...");
                 try {
-                    if (currentBackground && currentBackground.storagePath) {
-                        await storage.ref(currentBackground.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
-                    }
-                    await db.ref(`dept/${currentDept}/background`).remove();
+                    await mediaManagement.remove('background', null, currentBackground);
                     hideLoading();
                 } catch(e) {
                     hideLoading();
@@ -2078,10 +2117,7 @@
             if (confirm("Delete this music file?")) {
                 showLoading("Deleting music...");
                 try {
-                    if (currentMusicObj && currentMusicObj.storagePath) {
-                        await storage.ref(currentMusicObj.storagePath).delete().catch(e => console.warn("Storage cleanup failed:", e));
-                    }
-                    await db.ref(`dept/${currentDept}/music`).remove();
+                    await mediaManagement.remove('music', null, currentMusicObj);
                     hideLoading();
                 } catch(e) {
                     hideLoading();
@@ -2152,7 +2188,7 @@
             try {
                 const { url } = await uploadWithProgressUI(file, storagePath, "Uploading Background");
                 const newItem = { url: url, storagePath: storagePath };
-                await db.ref(`dept/${currentDept}/background`).set(newItem);
+                await mediaManagement.replace('background', newItem);
                 
                 setStatus("Background image uploaded!", "success");
                 document.getElementById('bgFileInput').value = '';
@@ -2181,7 +2217,7 @@
             try {
                 const { url } = await uploadWithProgressUI(file, storagePath, "Uploading Music");
                 const newItem = { url: url, storagePath: storagePath, name: file.name };
-                await db.ref(`dept/${currentDept}/music`).set(newItem);
+                await mediaManagement.replace('music', newItem);
                 
                 setStatus("Music file uploaded!", "success");
                 document.getElementById('musicFileInput').value = '';

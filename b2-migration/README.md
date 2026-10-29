@@ -1,16 +1,62 @@
 # B2 staging migration
 
+## Local app switch (October 29)
+
+The root app is now switched to the new backend, not just generated staging
+copies. See the root README for current startup instructions. The statements
+below about keeping root HTML unchanged describe the earlier migration phase.
+The old cloud source and published site have NOT been changed or deleted.
+
+Current repairs: live membership-based dashboard gate, global role-3-only
+cross-department access, narrower directory reads, localhost port support in
+Worker CORS, preview error feedback, and durable cleanup obligations for
+deletions, replacement assets and uploads awaiting publication. Cleanup removes
+actual B2 versions and Worker quota; jobs retry while an authorized dashboard
+is open. Interrupted-upload reservations can be cleaned after the active upload
+window expires. Shared references are protected. This is not a guarantee of
+immediate deletion across independent/offline systems or of zero charges.
+
+19 unit tests plus the existing cache/display suites passed. Live read-only
+checks passed video HEAD/MIME/CORS on port 5502, local upload preflight, anonymous
+directory denial, and new-project-only root HTML. UI automation approval timed
+out, so the new dashboard's visual/authenticated end-to-end acceptance remains
+pending; no LCP improvement or full live workflow pass is claimed.
+
 ## Current status
 
 Staging Worker deployed at https://panelsync-b2-staging.fxodapp.workers.dev.
-Credentials are installed and a real B2 read preflight passed (404 for the
-deliberately nonexistent path). Destination-only non-media bootstrap and
-role-aware rules are installed. Anonymous users access is denied (401), public
-display playlist reads succeed (200). No real B2 uploads tested yet; no media
-copied, and no source data, source rules, or production URLs changed.
-Eleven unit tests and a real local workerd /
-SQLite integration test passed (B2 network simulated). Existing cache/display
-tests also passed. Actual browser/TV and B2 acceptance tests remain required.
+Staging data migration completed: 3 departments, 9 unique media files,
+95,052,060 bytes. Every copied file passed full SHA-256 comparison against its
+source before rewritten metadata was imported into `fx-panelsync`. No source
+data, source rules, root application HTML, or production URLs were changed.
+
+Live staging verification passed HEAD/content lengths/MIME/CORS/immutable
+validators/304, MP4 byte ranges, private user-directory denial, anonymous API
+denial and administrator quota access. Quota equals the 9 unique files, with
+zero pending reservations. A separate unique tiny PNG was uploaded/read back
+and actually version-deleted; its bytes were removed from quota accounting.
+Only that test file was deleted, not any migrated/source media.
+
+Eleven unit tests, the existing cache/display tests and a local real
+workerd/SQLite integration test passed. The latter uses simulated B2 network;
+the checks above were run against the real deployed B2 Worker.
+
+The B2 download timeout now bounds waiting for response headers, not an entire
+healthy video transfer; slow clients are not forcibly cut off at 45 seconds.
+
+**Still required:** real browser/TV playback, persisted-cache reload/offline
+acceptance, checking B2 usage reporting for the Cloudflare transfer path, and
+explicit hosting/cutover approval. No claim of unlimited free service or
+completed production cutover is made.
+
+Local staging display: http://127.0.0.1:5501/display.html?dept=cse
+Local staging admin entry: http://127.0.0.1:5501/
+These require `serve-staging.mjs` running on this computer and are not public
+hosting URLs or links that a different TV can reach via its own localhost.
+
+Repeat read-only live checks with `node b2-migration/verify-staging.mjs`.
+`smoke-storage.mjs` performs one tiny temporary test upload/deletion; it is not
+a read-only check. Both require a current private migration Firebase session.
 
 This is the selected migration target. `../r2-migration/` is an abandoned
 R2 prototype, not a deployment target. Do not run its deploy or copy commands.
@@ -27,8 +73,8 @@ application key, Firebase ID token, Google OAuth token, or Cloudflare API token.
 - A private bucket does not automatically make the eventual media delivery URL
   private. The implementation must explicitly document display access policy.
 - Saving configuration does not change cloud data or Firebase rules. The new
-  staging Worker, quota namespace and destination-only Firebase bootstrap/rules
-  are deployed so far.
+  staging Worker, quota namespace, destination-only Firebase metadata/rules and
+  the copied B2 media are deployed. The source remains unchanged.
 
 The gcloud OAuth token was rejected by Firebase app sign-in with
 `INVALID_IDP_RESPONSE`. A local-only sign-in helper now supplies a verified

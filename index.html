@@ -257,15 +257,13 @@
     <script>
         // Firebase Configuration (DO NOT REMOVE)
         var firebaseConfig = {
-            apiKey: "AIzaSyC3TwG6SAgrBcVoHHPEWDl8DluGldZTYcs",
-            authDomain: "civic-voice-530e3.firebaseapp.com",
-            databaseURL: "https://civic-voice-530e3-default-rtdb.firebaseio.com",
-            projectId: "civic-voice-530e3",
-            storageBucket: "civic-voice-530e3.firebasestorage.app",
-            messagingSenderId: "445788979324",
-            appId: "1:445788979324:web:7d454068b866150f0c49f9",
-            measurementId: "G-QGZD0JBDVH"
-        };
+          "apiKey": "AIzaSyBRSB0PEpJHQyFo7PiduGuTmZPDtnZdjv4",
+          "authDomain": "fx-panelsync.firebaseapp.com",
+          "databaseURL": "https://fx-panelsync-default-rtdb.firebaseio.com",
+          "projectId": "fx-panelsync",
+          "appId": "1:634441644723:web:68d490a0eefef398d14ec6",
+          "messagingSenderId": "634441644723"
+};
 
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
@@ -369,7 +367,7 @@
             db.ref(`users/${sanitizedEmail}`).once('value')
                 .then(snapshot => {
                     const user = snapshot.val();
-                    if (user && user.active === true && user.roleLevel >= 1) {
+                    if (user && user.active === true && user.roleLevel === 3 && user.email.toLowerCase() === email.toLowerCase()) {
                         userRoleLevel = user.roleLevel;
                         return true;
                     }
@@ -377,7 +375,7 @@
                     return db.ref(`dept/${currentDept}/users/${sanitizedEmail}`).once('value')
                         .then(deptSnapshot => {
                             const deptUser = deptSnapshot.val();
-                            if (deptUser && deptUser.active === true && deptUser.roleLevel >= 1) {
+                            if (deptUser && deptUser.active === true && [1, 2].includes(deptUser.roleLevel) && deptUser.email.toLowerCase() === email.toLowerCase()) {
                                 userRoleLevel = deptUser.roleLevel;
                                 return true;
                             }

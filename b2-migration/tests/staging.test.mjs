@@ -115,10 +115,23 @@ test('media serves correct whole/range/HEAD/304/416 responses', async () => {
   assert.equal((await serveMedia(new Request('https://x', { headers: { 'If-None-Match': '"v1"' } }), env, 'a')).status, 304);
   assert.equal((await serveMedia(new Request('https://x', { method: 'HEAD' }), env, 'a')).body, null);
 });
+
+test('stale interrupted upload cleanup releases reserved rather than used quota', async () => {
+  const q = mockQuota(20);
+  q.data.set(key('interrupted'), new Uint8Array([9]));
+  assert.equal((await q.quota.fetch(upload('interrupted'))).status, 503);
+  q.ledger().files[key('interrupted')].since = Date.now() - 16 * 60 * 1000;
+  const response = await q.quota.fetch(new Request('https://media.example.com/api/object?key=' + key('interrupted'), { method: 'DELETE' }));
+  assert.equal(response.status, 200);
+  assert.equal(q.ledger().reserved, 0); assert.equal(q.ledger().used, 0);
+});
 test('browser CORS rejects foreign origin and permits configured preflight', async () => {
   const env = { ALLOWED_ORIGINS: 'https://admin.example.com' };
   assert.equal((await worker.fetch(new Request('https://x', { headers: { Origin: 'https://evil.example' } }), env)).status, 403);
   const response = await worker.fetch(new Request('https://x', { method: 'OPTIONS', headers: { Origin: 'https://admin.example.com' } }), env);
   assert.equal(response.status, 204);
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://admin.example.com');
+  const local = await worker.fetch(new Request('https://x', {method:'OPTIONS',headers:{Origin:'http://127.0.0.1:5502'}}), {ALLOW_LOCALHOST:'true'});
+  assert.equal(local.status, 204);
+  assert.equal((await worker.fetch(new Request('https://x', {method:'OPTIONS',headers:{Origin:'http://127.0.0.1.evil.example:5502'}}), {ALLOW_LOCALHOST:'true'})).status,403);
 });

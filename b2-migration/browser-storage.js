@@ -1,4 +1,4 @@
-/* Used only by the generated staging admin, never by the source/live admin. */
+/* Firebase-authenticated B2 gateway adapter. No storage credentials in browser. */
 (function (root) {
   root.PanelB2Storage = function (auth, endpoint) {
     endpoint = endpoint.replace(/\/$/, '');
@@ -66,7 +66,10 @@
           },
           async delete() {
             const response = await fetch(url, { method: 'DELETE', headers: { Authorization: 'Bearer ' + await token() } });
-            if (!response.ok) throw new Error('B2 deletion failed; media retained or administrator reconciliation needed.');
+            if (response.status === 404) {
+              const head = await fetch(endpoint + '/media/' + path.split('/').map(encodeURIComponent).join('/'), {method:'HEAD', cache:'no-store'});
+              if (head.status !== 404) throw new Error('Untracked B2 file remains; administrator reconciliation required.');
+            } else if (!response.ok) throw new Error('B2 deletion failed; cleanup remains pending.');
             usage().catch(() => {});
           }
         };

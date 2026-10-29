@@ -355,7 +355,7 @@
     }
 
     function verifyDepartment() {
-      requestMetadata('https://civic-voice-530e3-default-rtdb.firebaseio.com/depts.json', function (data) {
+      requestMetadata('https://fx-panelsync-default-rtdb.firebaseio.com/depts.json', function (data) {
         var allowed = Object.keys(data || {});
         if (currentDept && allowed.indexOf(currentDept) !== -1) { initDisplay(); return; }
         document.getElementById('viewport').style.display = 'none';
@@ -372,10 +372,10 @@
       });
     }
 
-    var RTDB_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/dept/' + currentDept + '/media.json';
-    var SETTINGS_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/dept/' + currentDept + '/settings.json';
-    var BACKGROUNDS_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/dept/' + currentDept + '/background.json';
-    var MUSIC_URL = 'https://civic-voice-530e3-default-rtdb.firebaseio.com/dept/' + currentDept + '/music.json';
+    var RTDB_URL = 'https://fx-panelsync-default-rtdb.firebaseio.com/dept/' + currentDept + '/media.json';
+    var SETTINGS_URL = 'https://fx-panelsync-default-rtdb.firebaseio.com/dept/' + currentDept + '/settings.json';
+    var BACKGROUNDS_URL = 'https://fx-panelsync-default-rtdb.firebaseio.com/dept/' + currentDept + '/background.json';
+    var MUSIC_URL = 'https://fx-panelsync-default-rtdb.firebaseio.com/dept/' + currentDept + '/music.json';
 
     var mediaArray = [];
     var currentBackground = null;
