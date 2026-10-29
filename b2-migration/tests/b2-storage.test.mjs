@@ -46,3 +46,13 @@ test('B2 private downloads keep credentials server-side and enforce byte range r
   client.download = async () => new Response('whole-file');
   await assert.rejects(client.get('a', { range: { offset: 2, length: 3 } }), /ignored byte range/);
 });
+
+test('B2 200 for a complete-object range is accepted only with exact length', async () => {
+  const client = new B2Storage(env);
+  client.download = async () => new Response('012345', { headers: { 'Content-Length': '6' } });
+  assert.equal(await new Response((await client.get('a', {range:{offset:0,length:6}})).body).text(), '012345');
+  await assert.rejects(client.get('a', {range:{offset:0,length:3}}), /ignored byte range/);
+  await assert.rejects(client.get('a', {range:{offset:1,length:6}}), /ignored byte range/);
+  client.download = async () => new Response('012345');
+  await assert.rejects(client.get('a', {range:{offset:0,length:6}}), /ignored byte range/);
+});

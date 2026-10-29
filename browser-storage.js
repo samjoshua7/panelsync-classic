@@ -23,7 +23,7 @@
       if (!el) {
         el = document.createElement('p'); el.id = 'b2StorageUsage';
         el.style.cssText = 'padding:0.75rem;text-align:center;font:inherit;';
-        document.querySelector('main').prepend(el);
+        (document.querySelector('[data-backend-details]') || document.querySelector('aside')).append(el);
       }
       el.textContent = 'B2 storage (all departments): ' + (data.usedBytes / 1000000).toFixed(1) +
         ' MB used + ' + (data.reservedBytes / 1000000).toFixed(1) + ' MB uploading / ' +

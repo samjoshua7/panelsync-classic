@@ -27,3 +27,9 @@ test('only active verified global role 3 crosses department boundaries',async()=
   records['users/member_example_com'].roleLevel=2;
   await assert.rejects(harness(records)('civil'));
 });
+test('missing, empty, literal null and unknown department allow authorized selection',async()=>{
+  const resolve=harness({depts:{cse:true,civil:true},'dept/cse/users/member_example_com':member});
+  for(const value of [null,'','null','NULL','undefined','missing']){
+    const access=await resolve(value);assert.deepEqual(Object.keys(access.roles),['cse']);
+  }
+});

@@ -48,7 +48,7 @@ export function build(config, output, root) {
   for (const [name, content] of Object.entries(files)) fs.writeFileSync(path.join(output, name), content);
   fs.copyFileSync(path.join(root, 'media-cache.js'), path.join(output, 'media-cache.js'));
   fs.copyFileSync(new URL('./browser-storage.js', import.meta.url), path.join(output, 'browser-storage.js'));
-  for (const name of ['access-control.js', 'media-management.js']) fs.copyFileSync(path.join(root, name), path.join(output, name));
+  for (const name of ['access-control.js', 'media-management.js', 'dashboard.js', 'dashboard.css']) fs.copyFileSync(path.join(root, name), path.join(output, name));
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const configPath = process.argv[2];

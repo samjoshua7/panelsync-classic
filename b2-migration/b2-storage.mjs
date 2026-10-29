@@ -66,7 +66,13 @@ export class B2Storage {
   async get(key, options = {}) {
     const response = await this.download(key, 'GET', options.range);
     if (!response) return null;
-    if (options.range && response.status !== 206) { await response.body?.cancel(); throw new Error('B2 ignored byte range'); }
+    if (options.range && response.status !== 206) {
+      // B2 may return 200 when the requested range covers the entire file.
+      // It is safe to wrap that body as 206 only with an exact length match.
+      const wholeRange = response.status === 200 && options.range.offset === 0 &&
+        Number(response.headers.get('Content-Length')) === options.range.length;
+      if (!wholeRange) { await response.body?.cancel(); throw new Error('B2 ignored byte range'); }
+    }
     return { body: response.body };
   }
   async put(key, stream, options) {

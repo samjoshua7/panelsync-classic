@@ -332,6 +332,7 @@
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
     </script>
+    <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
     <!-- Dept Selection Modal -->
@@ -673,7 +674,7 @@
         <section>
             <div class="card">
                 <div class="card-title">
-                    <i class="fas fa-tv"></i> Active Display Loop
+                    <i class="fas fa-tv"></i> Slide library
                     <span style="font-size:0.8rem; font-weight:normal; margin-left:auto; color:var(--text-gray);" id="itemCount">0 items</span>
                 </div>
                 <div class="media-grid" id="mediaGrid">
@@ -684,6 +685,7 @@
     </main>
 
 <script src="access-control.js"></script>
+<script src="dashboard.js"></script>
 <script src="media-management.js"></script>
 <script src="browser-storage.js"></script>
 <script>
@@ -792,7 +794,7 @@
         // DEPARTMENT MANAGEMENT
         // ==========================================
         const urlParams = new URLSearchParams(window.location.search);
-        const currentDept = urlParams.get('dept');
+        const currentDept = PanelAccess.normalizeDept(urlParams.get('dept'));
         const mediaManagement = currentDept ? PanelMediaManagement(db, storage, currentDept) : null;
 
         document.querySelector('nav').style.display = 'none';
@@ -823,6 +825,7 @@
                     logout();
                 }
             } else if (!currentDept || !allowedDepts.includes(currentDept)) {
+                if (allowedDepts.length === 1) { location.replace('?dept=' + encodeURIComponent(allowedDepts[0])); return; }
                 document.getElementById('deptModalOverlay').style.display = 'flex';
                 
                 const deptGrid = document.getElementById('deptGrid');
@@ -872,6 +875,7 @@
                 }
 
                 initAdminData();
+                PanelDashboard.mount(access);
             }
         }).catch(error => {
             sessionStorage.clear();
@@ -938,8 +942,9 @@
         function initAdminData() {
             const flow = document.createElement('section');
             flow.className = 'card'; flow.style.cssText = 'grid-column:1/-1;padding:18px';
+            flow.dataset.backendDetails = ''; flow.classList.add('backend-details');
             flow.innerHTML = '<h3>PanelSync · New backend</h3><p>Google sign-in &amp; playlists: Firebase fx-panelsync → media gateway: Cloudflare → files: Backblaze B2</p><p>1. Select and preview → 2. Upload → 3. Preview published slide → 4. Enable or disable. Deletion removes the playlist entry first and tracks storage cleanup.</p><p id="playlistSummary" role="status"></p><p id="cleanupStatus" role="status">Checking cleanup…</p><button id="retryCleanup" type="button">Retry cleanup</button>';
-            document.querySelector('main').prepend(flow);
+            document.querySelector('aside').append(flow);
             document.getElementById('retryCleanup').onclick = () => mediaManagement.retry().catch(error => alert(error.message));
             db.ref(`dept/${currentDept}/cleanup_jobs`).on('value', snapshot => {
                 const jobs = Object.values(snapshot.val() || {});
@@ -1576,11 +1581,13 @@
                     
                     const newItem = {
                         url: url,
+                        name: file.name,
                         type: isImage ? 'image' : 'video',
                         storagePath: storagePath,
                         useBackground: false,
                         useMusic: false
                     };
+                    if (!isImage) PanelVideoPosters.capture(document.getElementById('newSlideVideoPreview'), url);
 
                     if (isImage) {
                         newItem.duration = duration;
@@ -1695,7 +1702,10 @@
                 let preview = '';
                 if (item.type === 'video') {
                     // Only the explicit preview modal downloads video.
-                    preview = `<div style="display:flex;align-items:center;justify-content:center;height:100%;"><i class="fas fa-play-circle" style="font-size:3rem;"></i></div>`;
+                    const poster = PanelVideoPosters.get(item.url);
+                    const name = PanelVideoPosters.escape(item.name || (item.storagePath || '').split('/').pop() || 'Video slide');
+                    const duration = Number.isFinite(Number(item.duration)) && Number(item.duration)>0 ? Math.round(item.duration)+' sec' : 'Full-length playback';
+                    preview = `<div data-poster-url="${PanelVideoPosters.escape(item.url)}" class="video-hint">${poster ? `<img src="${poster}" alt="Video frame">` : `<i class="fas fa-play-circle"></i><strong title="${name}">${name}</strong><small>${duration} · Open Preview to capture a frame</small>`}</div>`;
                 } else if (item.type === 'text') {
                     const cleanText = item.content.replace(/</g, "&lt;");
                     preview = `<div style="width:100%; height:100%; background:${item.bgColor || '#000'}; color:${item.textColor || '#fff'}; display:flex; justify-content:center; align-items:center; text-align:center; padding:10px; box-sizing:border-box; font-size:14px; font-weight:bold; overflow:hidden; white-space: pre-wrap;">${cleanText.substring(0,50)}${item.content.length>50?'...':''}</div>`;
@@ -1884,6 +1894,7 @@
 
         // --- SLIDE PREVIEW MODAL HANDLERS ---
         let currentPreviewIndex = -1;
+        let previewGeneration = 0;
 
         function openSlidePreview(index) {
             if (index < 0 || index >= mediaArray.length) return;
@@ -1894,9 +1905,11 @@
         }
 
         function closeSlidePreview() {
+            previewGeneration++;
             const modal = document.getElementById('slidePreviewModal');
             modal.style.display = 'none';
             const vid = document.getElementById('previewModalVideo');
+            vid.onerror = vid.onloadeddata = null;
             vid.pause();
             vid.removeAttribute('src'); vid.load();
             document.getElementById('previewModalImg').removeAttribute('src');
@@ -1947,16 +1960,28 @@
             const imgEl = document.getElementById('previewModalImg');
             const vidEl = document.getElementById('previewModalVideo');
             const txtEl = document.getElementById('previewModalText');
+            const generation = ++previewGeneration;
+            vidEl.onerror = imgEl.onerror = null;
             const errorId = 'previewLoadError';
             const oldError = document.getElementById(errorId); if (oldError) oldError.remove();
             function previewError() {
+                if (generation !== previewGeneration || document.getElementById('slidePreviewModal').style.display === 'none') return;
+                const element = item.type === 'video' ? vidEl : imgEl;
+                if (!['video','image'].includes(item.type) || element.getAttribute('src') !== item.url || (item.type === 'video' && vidEl.error?.code === 1)) return;
                 if (document.getElementById(errorId)) return;
                 const message = document.createElement('p'); message.id = errorId;
                 message.style.cssText = 'position:absolute;bottom:10px;left:10px;right:10px;background:#182235;padding:12px;color:white;z-index:5';
                 message.textContent = 'Media could not load. Check your connection or the Cloudflare/B2 service; the slide has not been changed.';
+                const retry = document.createElement('button');retry.type='button';retry.className='btn-sm btn-update';retry.textContent='Retry preview';
+                retry.onclick=()=>{message.remove();if(item.type==='video'){vidEl.load();}else{imgEl.removeAttribute('src');imgEl.src=item.url;}};
+                message.append(document.createElement('br'),retry);
                 imgEl.parentElement.appendChild(message);
             }
             imgEl.onerror = previewError; vidEl.onerror = previewError;
+            function previewReady(){if(generation!==previewGeneration)return;const error=document.getElementById(errorId);if(error)error.remove();}
+            imgEl.onload=previewReady;
+            vidEl.onloadeddata=()=>{previewReady();if(generation===previewGeneration&&item.type==='video')PanelVideoPosters.capture(vidEl,item.url);};
+            vidEl.crossOrigin='anonymous';
 
             imgEl.style.display = 'none';
             vidEl.pause();
