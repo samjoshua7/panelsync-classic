@@ -26,7 +26,7 @@ const context = {
   XMLHttpRequest: XHR, navigator: { onLine: true }, Date: { now: () => now }, console,
   localStorage: { getItem: key => saved.has(key) ? saved.get(key) : null, setItem: (key, value) => saved.set(key, value) },
   RTDB_URL: 'media', SETTINGS_URL: 'settings', BACKGROUNDS_URL: 'background', MUSIC_URL: 'music',
-  currentIndex: 0, preloadAllMedia: () => warmCalls++, nextSlide() {}
+  currentIndex: 0, mediaArray: [], preloadAllMedia: () => warmCalls++, nextSlide() {}
 };
 vm.createContext(context); vm.runInContext(metadataSource, context);
 context.fetchMedia(); context.fetchMedia();
@@ -56,4 +56,18 @@ assert.ok(!grid.includes('<video'), 'grid never creates auto-loading video eleme
 assert.ok(grid.includes('openSlidePreview'), 'interactive preview remains available');
 assert.ok(grid.includes('replaceWith(oldImage)'), 'unchanged loaded images are reused across edits');
 assert.ok(html.includes('cleanupGeneration'), 'delayed cleanup guarded against layer reuse');
+// A metadata-only Save reuses the existing poll and leaves current playback
+// positioned by slide key. No new warmup or immediate slide advance occurs.
+let saveWarmups=0, advances=0;
+const saveRequests=[];
+class SaveXHR extends XHR {constructor(){super();saveRequests.push(this);}}
+const saveContext={...context,XMLHttpRequest:SaveXHR,currentIndex:0,mediaArray:[],preloadAllMedia:()=>saveWarmups++,nextSlide:()=>advances++};
+vm.createContext(saveContext);vm.runInContext(metadataSource,saveContext);
+saveContext.fetchMedia();saveRequests[0].respond(200,{a:{url:'a.mp4',type:'video',order:1},b:{url:'b.jpg',type:'image',order:2,duration:5}},'a1');
+saveContext.fetchMedia();saveRequests[1].respond(200,{a:{url:'a.mp4',type:'video',order:2},b:{url:'b.jpg',type:'image',order:1,duration:20}},'a2');
+assert.equal(saveWarmups,1,'duration/order change does not rescan media cache');
+assert.equal(saveContext.currentIndex,1,'playing slide identity survives reorder');
+assert.equal(advances,0,'save does not interrupt current playback');
+saveContext.fetchMedia();saveRequests[2].respond(200,{b:{url:'b.jpg',type:'image',order:1,duration:20}},'a3');
+assert.equal(advances,0,'removed playing slide waits for its existing playback boundary');
 console.log('PASS: HTML script syntax, conditional sync, overlap protection, disabled filtering, unchanged playlist, empty playlist, backoff, offline metadata, click-only video preview');

@@ -99,6 +99,7 @@ must not be reintroduced into root application configuration.
 | [dashboard.css](dashboard.css) | Responsive iOS-inspired workspace styling and independent scroll regions |
 | [browser-storage.js](browser-storage.js) | Firebase-like upload/delete adapter backed by the Worker, checksum and progress reporting |
 | [media-management.js](media-management.js) | Publication, replacement, durable cleanup obligations and retries |
+| [playlist-draft.js](playlist-draft.js) | Tab-local duration/order drafts, validation, discard and conflict-aware scalar save plans |
 | [display.html](display.html) | TV playback, conditional REST metadata polling, layers, progress/audio/fullscreen controls |
 | [media-cache.js](media-cache.js) | ES5-compatible IndexedDB/media-download/blob-URL ownership module |
 | [serve-app.mjs](serve-app.mjs) | Loopback-only, explicit-allowlist development server |
@@ -383,7 +384,9 @@ PPT/PPTX has a helper workflow, not native in-browser PowerPoint conversion.
 
 ### Disable / enable
 
-An atomic RTDB multi-path update moves a slide between `media` and
+Enable/disable first changes the local draft and must be saved using the top
+Save changes button; Discard cancels it without a backend write. On Save, an
+atomic RTDB multi-path update moves a slide between `media` and
 `disabled_media` using the same ID. Disabling is **not deletion**: its B2 file
 and quota usage remain so it can be re-enabled. TVs read only active `media`;
 the admin subscribes to both nodes and merges them for its library.
@@ -570,6 +573,38 @@ are not bypassed. Real codec/WebView/TV compatibility needs hardware testing.
 
 ## Dashboard and previews
 
+### Saving duration, ordering and enable/disable
+
+Duration inputs, up/down ordering and Enable/Disable controls create an in-memory draft; they
+do not write to Firebase per edit. The top Save changes / Discard bar shows the
+dirty state, and leaving the page with a draft requests a browser warning.
+Drafts are tab-local, not durable across reloads. Discard restores current
+saved/listener values, not an outdated initial snapshot. Uploads, deletion,
+text content/colors and other settings remain immediate actions.
+The text editor queues its duration separately and labels that distinction.
+
+Save validates whole-number durations (1–600 seconds), reads current active and
+archived metadata once each, rejects known same-field conflicts or deleted/moved
+slides, then performs one atomic multi-path update. Unmoved slides use only changed
+`order` and `duration` scalars. Enable/disable writes a fresh complete record into
+its destination node and deletes the source in that same update, with any draft
+duration/order applied. Media URLs stay identical and no B2 blobs are rewritten.
+There are no overlapping parent/child paths in the atomic update. The draft remains available
+on validation/write failure. Realtime updates to unrelated fields are preserved.
+Conflict checking is best-effort read-before-write, not server-side compare-and-
+swap: a simultaneous edit after that read can still race. If connectivity drops
+mid-save, Firebase may await reconnection; do not assume a lost response proves
+the write was never committed. Explicitly offline Save is refused before writing.
+
+TVs use their existing 10-second conditional playlist polling: there is no new
+revision endpoint, poll, listener, reload command or hard refresh. A duration/order
+change keeps the current slide running to its normal boundary and preserves its
+identity across reordering. A sorted media-URL signature prevents metadata-only
+saves from rescanning the media cache. Offline TVs pick up changes after they
+reconnect; synchronization is not guaranteed within ten seconds during failures.
+The only added reads are the two metadata checks when an admin clicks Save, not
+media downloads or additional recurring display traffic.
+
 The desktop workspace uses independently scrolling sidebar controls and a slide
 grid. Sidebar sections are Upload, Settings, Text slide, Background, Music and
 System. System contains backend flow, cleanup, storage usage and privileged
@@ -630,7 +665,7 @@ do not add paid bindings/subscriptions as an unreviewed dependency fix.
 Read-only/local regression suite, from repository root:
 
 ```powershell
-node --test tests/access-control.test.cjs tests/media-management.test.cjs tests/storage-retry.test.cjs tests/upload-feedback.test.cjs b2-migration/tests/*.test.mjs
+node --test tests/access-control.test.cjs tests/media-management.test.cjs tests/storage-retry.test.cjs tests/upload-feedback.test.cjs tests/playlist-draft.test.cjs tests/playlist-save.test.cjs b2-migration/tests/*.test.mjs
 node --test tests/legacy-display.test.cjs
 node tests/media-cache.test.cjs
 node tests/display-sync.test.cjs
@@ -750,6 +785,7 @@ Publish these root assets together, preserving relative paths:
 index.html             admin.html             display.html
 access-control.js      browser-storage.js     media-management.js
 media-cache.js         dashboard.js           dashboard.css
+playlist-draft.js
 ```
 
 Configure Firebase authorized domains and Worker allowed origins before trying
