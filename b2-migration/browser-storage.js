@@ -23,7 +23,7 @@
       if (!el) {
         el = document.createElement('p'); el.id = 'b2StorageUsage';
         el.style.cssText = 'padding:0.75rem;text-align:center;font:inherit;';
-        document.querySelector('main').prepend(el);
+        (document.querySelector('[data-backend-details]') || document.querySelector('aside')).append(el);
       }
       el.textContent = 'B2 storage (all departments): ' + (data.usedBytes / 1000000).toFixed(1) +
         ' MB used + ' + (data.reservedBytes / 1000000).toFixed(1) + ' MB uploading / ' +
@@ -40,7 +40,7 @@
                 const idToken = await token();
                 const digest = await crypto.subtle.digest('SHA-1', await file.arrayBuffer());
                 const sha1 = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-                const result = await new Promise((resolve, reject) => {
+                const send = () => new Promise((resolve, reject) => {
                   const xhr = new XMLHttpRequest();
                   xhr.open('PUT', url); xhr.timeout = 600000;
                   xhr.setRequestHeader('Authorization', 'Bearer ' + idToken);
@@ -53,10 +53,21 @@
                     let data;
                     try { data = JSON.parse(xhr.responseText); } catch (e) { reject(new Error('Invalid B2 response')); return; }
                     if (xhr.status === 201) resolve(data);
-                    else reject(new Error(data.error || 'B2 upload failed'));
+                    else reject(Object.assign(new Error(data.error || 'B2 upload failed'), { safeToRetry: data.retryable === true }));
                   };
                   xhr.send(file);
                 });
+                let result;
+                for(let attempt=0;attempt<2;attempt++) {
+                  try { result=await send(); break; }
+                  catch(error) {
+                    if(attempt || !error.safeToRetry)throw error;
+                    // Same immutable key, original File, fresh server upload URL.
+                    // Only explicit server-confirmed absence permits this retry.
+                    progress({bytesTransferred:0,totalBytes:file.size,state:'retrying'});
+                    await new Promise(resolve=>setTimeout(resolve,1000));
+                  }
+                }
                 task.snapshot = { ref: { getDownloadURL: () => Promise.resolve(result.url) } };
                 progress({ bytesTransferred: file.size, totalBytes: file.size });
                 complete(); usage().catch(() => {});

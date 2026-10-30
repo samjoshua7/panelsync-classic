@@ -536,6 +536,7 @@
         <aside>
             <div class="card">
                 <div class="card-title"><i class="fas fa-cloud-upload-alt"></i> New Content</div>
+                <p class="upload-guidance">JPEG / PNG / WebP: <strong>10 MiB</strong> · MP4: <strong>80 MiB</strong> · PDF: <strong>25 MiB</strong>. Maximum 100 slides including disabled slides. Upload is complete only when the new card appears.</p>
                 
                 <div style="display:flex; flex-direction: column; gap:10px;">
                     <button class="primary-btn" style="margin-top:0; padding:1rem; font-size:1.1rem;" onclick="document.getElementById('fileInput').click()"><i class="fas fa-file-import"></i> Select Slide File</button>
@@ -628,6 +629,7 @@
 
             <div class="card" style="margin-top: 2rem;">
                 <div class="card-title"><i class="fas fa-image"></i> Background Image</div>
+                <p class="upload-guidance">One background, up to 10 MiB. Remove the current image before adding another. Enable “Use Background” on the desired slides.</p>
                 
                 <div class="upload-area" id="bgUploadArea" onclick="if(!this.hasAttribute('disabled')) document.getElementById('bgFileInput').click()">
                     <i class="fas fa-image"></i>
@@ -650,11 +652,12 @@
 
             <div class="card" style="margin-top: 2rem;">
                 <div class="card-title"><i class="fas fa-music"></i> Background Music</div>
+                <p class="upload-guidance">MP3 / WAV / OGG, up to 15 MiB. One audio file per department. Enable “Use Music” on desired slides; the TV may require an audio-unlock click.</p>
                 
                 <div class="upload-area" id="musicUploadArea" onclick="if(!this.hasAttribute('disabled')) document.getElementById('musicFileInput').click()">
                     <i class="fas fa-music"></i>
                     <p style="margin:0; font-weight:600;">Upload Music</p>
-                    <p style="margin:5px 0 0; font-size:0.75rem; color:var(--text-gray);">MP3 files only (Max 10MB)</p>
+                    <p style="margin:5px 0 0; font-size:0.75rem; color:var(--text-gray);">MP3 / WAV / OGG (Max 15 MiB)</p>
                 </div>
                 <input type="file" id="musicFileInput" hidden accept="audio/*">
 
@@ -1467,6 +1470,7 @@
                 toast.style.display = 'block';
                 title.textContent = titleText;
                 bar.style.width = '0%';
+                bar.style.background = 'var(--primary)';
                 percent.textContent = '0%';
 
                 if (file.type.startsWith('image/')) {
@@ -1489,23 +1493,33 @@
 
                 task.on('state_changed', 
                     snapshot => {
-                        const p = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        const p = Math.min(95, (snapshot.bytesTransferred / snapshot.totalBytes) * 95);
                         bar.style.width = p + '%';
-                        percent.textContent = Math.round(p) + '%';
+                        percent.textContent = snapshot.state === 'retrying' ? 'Temporary storage failure · safely retrying once…' : snapshot.bytesTransferred >= snapshot.totalBytes ? 'Bytes sent · verifying storage…' : Math.round(p) + '% · sending file';
                     }, 
                     error => {
-                        setTimeout(() => toast.style.display = 'none', 2000);
+                        uploadOutcome(false, error.message);
                         reject(error);
                     }, 
                     () => {
                         task.snapshot.ref.getDownloadURL().then(url => {
-                            setTimeout(() => toast.style.display = 'none', 1000);
+                            title.textContent = 'Storage verified · publishing…';
+                            percent.textContent = 'Waiting for playlist confirmation'; bar.style.width = '98%';
                             resolve({ url, snapshot: task.snapshot });
                         });
                     }
                 );
-                }).catch(reject);
+                }).catch(error => {uploadOutcome(false,error.message);reject(error);});
             });
+        }
+
+        function uploadOutcome(ok, message) {
+            const toast=document.getElementById('uploadProgressToast');toast.style.display='block';toast.setAttribute('role','status');
+            document.getElementById('uploadTitle').textContent=ok?'Published successfully':'Not published';
+            document.getElementById('uploadPercent').textContent=ok?'100% · '+message:message;
+            document.getElementById('uploadBar').style.width=ok?'100%':'0%';
+            document.getElementById('uploadBar').style.background=ok?'#16a34a':'#dc2626';
+            if(ok)setTimeout(()=>toast.style.display='none',4000);
         }
 
         // Read duration before upload while the File is locally seekable. Some
@@ -1605,8 +1619,10 @@
                 }
 
                 setStatus("Content live on displays!", "success");
+                uploadOutcome(true,'Playlist saved');
                 clearSelectedFile();
             } catch (err) {
+                uploadOutcome(false,err.message);
                 setStatus(err.message, "error");
                 uploadBtn.disabled = false;
             }
@@ -1824,10 +1840,12 @@
         }
 
         function updateBackground(id, checked) {
+            if(checked && !(currentBackground && currentBackground.url)){alert('Add a background image in the Background tab first, then enable it for this slide.');renderGrid();return;}
             db.ref(`dept/${currentDept}/${getNodePath(id)}/${id}/useBackground`).set(checked);
         }
 
         function updateMusic(id, checked) {
+            if(checked && !(currentMusicObj && currentMusicObj.url)){alert('Add an audio file in the Music tab first, then enable it for this slide.');renderGrid();return;}
             db.ref(`dept/${currentDept}/${getNodePath(id)}/${id}/useMusic`).set(checked);
         }
 
@@ -2216,12 +2234,14 @@
                 await mediaManagement.replace('background', newItem);
                 
                 setStatus("Background image uploaded!", "success");
+                uploadOutcome(true,'Background saved');
                 document.getElementById('bgFileInput').value = '';
                 document.getElementById('bgPreview').style.display = 'none';
                 document.getElementById('bgUploadBtn').style.display = 'none';
             } catch (err) {
                 setStatus(err.message, "error");
                 document.getElementById('bgUploadBtn').disabled = false;
+                uploadOutcome(false,err.message);
             }
         }
 
@@ -2245,12 +2265,14 @@
                 await mediaManagement.replace('music', newItem);
                 
                 setStatus("Music file uploaded!", "success");
+                uploadOutcome(true,'Music saved');
                 document.getElementById('musicFileInput').value = '';
                 document.getElementById('musicPreview').style.display = 'none';
                 document.getElementById('musicUploadBtn').style.display = 'none';
             } catch (err) {
                 setStatus(err.message, "error");
                 document.getElementById('musicUploadBtn').disabled = false;
+                uploadOutcome(false,err.message);
             }
         }
 

@@ -10,6 +10,9 @@ export function validType(folder, type) {
       ['image/jpeg', 'image/png', 'image/webp', 'video/mp4']).includes(type);
 }
 function json(value, status = 200) { return Response.json(value, { status }); }
+function diagnostic(error) {
+  return String(error.message || '').replace(/https?:\/\/\S+/g, '[url]').replace(/[A-Za-z0-9_.-]{32,}/g, '[redacted]').slice(0, 240);
+}
 function origins(env) { return (env.ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean); }
 function allowedOrigin(origin, env) {
   return origins(env).includes(origin) || (env.ALLOW_LOCALHOST === 'true' && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin));
@@ -83,9 +86,10 @@ export default {
       // B2 adapter errors are fixed messages/status codes, never upstream bodies
       // or tokens. Keep useful diagnostics without exposing credentials.
       if (error.message?.startsWith('B2 ') || error.message?.startsWith('Invalid B2 ')) console.warn(error.message);
-      else console.warn('Staging request failed:', error.name, String(error.stack || '').split('\n').slice(1, 3).join('\n'));
+      else console.warn('Staging request failed:', error.name, diagnostic(error), String(error.stack || '').split('\n').slice(1, 3).join('\n'));
       const message = ['Invalid media path', 'Invalid department', 'Unauthorized', 'Forbidden', 'Staging database not configured'].includes(error.message) ? error.message : 'Request failed; retry or contact the administrator';
-      return respond(json({ error: message }, message === 'Unauthorized' ? 401 : message === 'Forbidden' ? 403 : 400));
+      const status = message === 'Unauthorized' ? 401 : message === 'Forbidden' ? 403 : ['Invalid media path', 'Invalid department'].includes(message) ? 400 : 503;
+      return respond(json({ error: message }, status));
     }
   }
 };
@@ -109,6 +113,9 @@ export class MediaQuota {
     }
     const { key, folder } = parseKey(url.searchParams.get('key'));
     if (request.method === 'DELETE') {
+      const before = await this.ctx.storage.get('ledger');
+      const candidate = before?.files?.[key];
+      if (candidate?.state === 'uploading' && Date.now() - candidate.since < 15 * 60 * 1000) return json({ error: 'Upload still active; cleanup will retry after its 15-minute safety window.' }, 409);
       // Reserve deletion against concurrent mutation; quota is released only after B2 deletion succeeds.
       const found = await this.transaction(state => {
         const entry = state.files[key];
@@ -118,7 +125,12 @@ export class MediaQuota {
         entry.previousState = entry.state;
         entry.state = 'deleting'; return true;
       });
-      if (!found) return json({ error: 'Unknown object; refusing untracked deletion' }, 404);
+      if (!found) {
+        // Repeated cleanup of a failed/previously removed upload is success only
+        // after B2 confirms absence. Never delete an untracked existing file.
+        if (!await this.env.MEDIA.head(key)) return json({ deleted: true, alreadyAbsent: true });
+        return json({ error: 'Untracked object exists; administrator reconciliation required' }, 409);
+      }
       try {
         await this.env.MEDIA.delete(key);
         await this.transaction(state => {
@@ -163,14 +175,20 @@ export class MediaQuota {
       await this.transaction(state => { state.reserved -= size; state.used += size; state.files[key].state = 'stored'; });
       return json({ key, url: `${url.origin}/media/${key.split('/').map(encodeURIComponent).join('/')}`, size }, 201);
     } catch (e) {
+      if (e.message?.startsWith('B2 ')) console.warn(e.message);
+      else console.warn('Upload pipeline exception', e.name, diagnostic(e), String(e.stack || '').split('\n').slice(1, 4).join('\n'));
       // If cleanup cannot be confirmed, keep the reservation: fail closed, never undercount.
       try {
         if (stored) await this.env.MEDIA.delete(key);
         // A failed PUT can be ambiguous: do not free capacity if an object remains.
         if (await this.env.MEDIA.head(key)) throw new Error('Object state needs reconciliation');
         await this.transaction(state => { state.reserved -= size; delete state.files[key]; });
-      } catch (cleanupError) { return json({ error: 'Upload interrupted; reservation retained for administrator reconciliation' }, 503); }
-      return json({ error: 'Upload failed; no quota consumed' }, 400);
+      } catch (cleanupError) {
+        if (cleanupError.message?.startsWith('B2 ')) console.warn(cleanupError.message);
+        return json({ error: 'Upload could not be verified; no slide was published. Storage reservation retained for safe cleanup.', code: 'UPLOAD_UNVERIFIED' }, 503);
+      }
+      if (e.retryable === true) return json({ error: 'Temporary storage service failure. No file remains and no quota was consumed; a bounded retry is safe.', code: 'UPSTREAM_TRANSIENT', retryable: true }, 503);
+      return json({ error: 'Upload failed; no quota consumed', retryable: false }, 400);
     }
   }
 }

@@ -56,3 +56,16 @@ test('B2 200 for a complete-object range is accepted only with exact length', as
   client.download = async () => new Response('012345');
   await assert.rejects(client.get('a', {range:{offset:0,length:6}}), /ignored byte range/);
 });
+
+test('transient 520 on read is retried once; authorization/cap failures are not looped', async () => {
+  let downloads=0;
+  const client=new B2Storage(env,async url=>{
+    if(url.includes('b2_authorize_account'))return Response.json(authorization());
+    downloads++;return new Response(null,{status:downloads===1?520:404});
+  });
+  assert.equal(await client.head('missing'),null);assert.equal(downloads,2);
+  downloads=0;
+  client.fetcher=async()=>{downloads++;return Response.json({code:'transaction_cap_exceeded'},{status:403});};
+  await assert.rejects(client.download('missing','HEAD'),/HTTP 403, transaction_cap_exceeded/);
+  assert.equal(downloads,1);
+});
