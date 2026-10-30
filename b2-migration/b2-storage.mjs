@@ -1,15 +1,35 @@
 // Native B2 API: secrets never leave the Worker. No S3 delete markers.
 const encodePath = value => value.split('/').map(encodeURIComponent).join('/');
+// Only read-like operations use this helper. Never replay an upload or deletion
+// automatically: a lost response can conceal a committed write.
+async function retryRead(operation) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await operation();
+      if (attempt === 0 && response.status >= 500) { await response.body?.cancel(); continue; }
+      return response;
+    } catch (error) {
+      if (attempt === 1 || !['TypeError', 'AbortError', 'TimeoutError'].includes(error.name)) throw error;
+    }
+  }
+}
+async function failure(response, operation) {
+  const data = await response.json().catch(() => ({}));
+  const code = /^[a-z0-9_]+$/.test(data.code || '') ? data.code : 'unknown';
+  const error = new Error('B2 ' + operation + ' failed (HTTP ' + response.status + ', ' + code + ')');
+  error.retryable = response.status >= 500;
+  return error;
+}
 export class B2Storage {
   constructor(env, fetcher = (...args) => fetch(...args)) { this.env = env; this.fetcher = fetcher; this.auth = null; }
   async authorize() {
     if (this.auth && this.auth.expires > Date.now()) return this.auth;
     if (!this.env.B2_KEY_ID || !this.env.B2_APPLICATION_KEY) throw new Error('B2 credentials missing');
-    const response = await this.fetcher('https://api.backblazeb2.com/b2api/v4/b2_authorize_account', {
+    const response = await retryRead(() => this.fetcher('https://api.backblazeb2.com/b2api/v4/b2_authorize_account', {
       headers: { Authorization: 'Basic ' + btoa(this.env.B2_KEY_ID + ':' + this.env.B2_APPLICATION_KEY) },
       signal: AbortSignal.timeout(15000)
-    });
-    if (!response.ok) throw new Error('B2 authorization failed (HTTP ' + response.status + ')');
+    }));
+    if (!response.ok) throw await failure(response, 'authorization');
     const data = await response.json(), api = data.apiInfo?.storageApi;
     if (!api?.apiUrl || !api.downloadUrl || !data.authorizationToken) throw new Error('Invalid B2 authorization');
     // Require a bucket-restricted key; never accept an account-wide/master key.
@@ -26,11 +46,12 @@ export class B2Storage {
   }
   async api(name, body) {
     const auth = await this.authorize();
-    const response = await this.fetcher(auth.apiUrl + '/b2api/v4/' + name, {
+    const operation = () => this.fetcher(auth.apiUrl + '/b2api/v4/' + name, {
       method: 'POST', headers: { Authorization: auth.token, 'Content-Type': 'application/json' },
       body: JSON.stringify(body), signal: AbortSignal.timeout(20000)
     });
-    if (!response.ok) { if (response.status === 401) this.auth = null; throw new Error('B2 operation failed'); }
+    const response = name === 'b2_get_upload_url' ? await retryRead(operation) : await operation();
+    if (!response.ok) { if (response.status === 401) this.auth = null; throw await failure(response, 'operation'); }
     return response.json();
   }
   async download(key, method, range) {
@@ -40,6 +61,7 @@ export class B2Storage {
     // Bound the wait for B2 response headers, not the complete video transfer.
     // A fixed whole-response deadline would cut off otherwise healthy playback
     // on a slow TV connection. The display already guards stalled playback.
+    const response = await retryRead(async () => {
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(), 45000);
     let response;
@@ -48,8 +70,10 @@ export class B2Storage {
         method, headers, signal: controller.signal
       });
     } finally { clearTimeout(deadline); }
+    return response;
+    });
     if (response.status === 404) return null;
-    if (!response.ok) { if (response.status === 401) this.auth = null; throw new Error('B2 download failed'); }
+    if (!response.ok) { if (response.status === 401) this.auth = null; throw await failure(response, 'download'); }
     return response;
   }
   async head(key) {
@@ -95,7 +119,7 @@ export class B2Storage {
         'X-Bz-File-Name': encodeURIComponent(key), 'X-Bz-Content-Sha1': sha1
       }, body: fixed.readable, duplex: 'half', signal: AbortSignal.timeout(600000)
     });
-    if (!response.ok) { await response.body?.cancel(); throw new Error('B2 upload failed'); }
+    if (!response.ok) throw await failure(response, 'upload');
     await piping;
     const result = await response.json();
     if (result.fileName !== key || result.contentLength !== size || result.contentSha1 !== sha1 || !result.fileId) throw new Error('B2 upload verification failed');

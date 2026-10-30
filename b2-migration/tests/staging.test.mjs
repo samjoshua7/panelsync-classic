@@ -125,6 +125,19 @@ test('stale interrupted upload cleanup releases reserved rather than used quota'
   assert.equal(response.status, 200);
   assert.equal(q.ledger().reserved, 0); assert.equal(q.ledger().used, 0);
 });
+
+test('repeated cleanup succeeds for confirmed absent files but preserves untracked files', async () => {
+  const q = mockQuota(20);
+  const remove = name => q.quota.fetch(new Request('https://media.example.com/api/object?key=' + key(name), {method:'DELETE'}));
+  assert.equal((await remove('missing')).status,200);
+  q.data.set(key('external'),new Uint8Array([1]));
+  assert.equal((await remove('external')).status,409);
+  assert.ok(q.data.has(key('external')));
+  q.data.set(key('busy'),new Uint8Array([1]));
+  await q.quota.fetch(upload('busy'));
+  assert.equal((await remove('busy')).status,409);
+  assert.ok(q.data.has(key('busy')));
+});
 test('browser CORS rejects foreign origin and permits configured preflight', async () => {
   const env = { ALLOWED_ORIGINS: 'https://admin.example.com' };
   assert.equal((await worker.fetch(new Request('https://x', { headers: { Origin: 'https://evil.example' } }), env)).status, 403);
@@ -134,4 +147,12 @@ test('browser CORS rejects foreign origin and permits configured preflight', asy
   const local = await worker.fetch(new Request('https://x', {method:'OPTIONS',headers:{Origin:'http://127.0.0.1:5502'}}), {ALLOW_LOCALHOST:'true'});
   assert.equal(local.status, 204);
   assert.equal((await worker.fetch(new Request('https://x', {method:'OPTIONS',headers:{Origin:'http://127.0.0.1.evil.example:5502'}}), {ALLOW_LOCALHOST:'true'})).status,403);
+});
+
+test('transient upload retry is permitted only after confirming absence and releasing quota', async () => {
+  const q=mockQuota(20);
+  q.quota.env.MEDIA.put=async()=>{const error=new Error('B2 upload failed (HTTP 525, unknown)');error.retryable=true;throw error;};
+  const safe=await q.quota.fetch(upload('tls'));assert.equal(safe.status,503);assert.equal((await safe.json()).retryable,true);assert.equal(q.ledger().reserved,0);
+  q.quota.env.MEDIA.head=async()=>({size:6});
+  const uncertain=await q.quota.fetch(upload('uncertain'));assert.equal(uncertain.status,503);assert.notEqual((await uncertain.json()).retryable,true);assert.equal(q.ledger().reserved,6);
 });

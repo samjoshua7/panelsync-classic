@@ -364,6 +364,8 @@ They are durable obligations, not uploaded files or a guaranteed background queu
    upload window. An abandoned browser upload is therefore discoverable.
 5. Browser computes SHA-1 using Web Crypto and uploads to the gateway with file
    length, MIME and checksum. XHR reports progress; timeout is ten minutes.
+   The UI distinguishes sending bytes (up to 95%), storage verification and
+   Firebase publication (98%); only successful publication displays 100%.
 6. Worker authorizes, reserves quota atomically, streams into B2 and validates
    B2's returned name, size, checksum and file ID.
 7. Successful publication atomically writes the active Firebase record and clears
@@ -412,9 +414,11 @@ while an authorized dashboard is open. Active upload jobs are skipped until
 their window expires. There is **no independently running cleanup scheduler**.
 
 A repeated delete that finds an unknown ledger object is not allowed to erase
-arbitrary untracked B2 data. The browser adapter treats it as already complete
-only if a subsequent public HEAD confirms the file is absent; otherwise it
-reports administrator reconciliation is required.
+arbitrary untracked B2 data. The gateway confirms absence through B2 HEAD and
+returns idempotent success for an already absent file; an existing untracked
+object returns 409 for administrator reconciliation. The browser retains a
+legacy 404/HEAD fallback for older gateway deployments. Active-upload cleanup
+returns a clear 409 during its 15-minute safety window rather than a generic 400.
 
 This is a recoverable multi-service workflow, not a distributed transaction.
 Concurrent writers and network outages can leave temporary residue. Reference
@@ -452,9 +456,9 @@ PUT requires `Content-Type`, `X-File-Size` and lowercase 40-hex-character
 Wrong size/type/checksum declarations return `400`; duplicate paths `409`;
 capacity exhaustion `413`; authentication/authorization failures `401`/`403`.
 Unknown tracked-state deletion returns `404`; ambiguous cleanup may return
-`503`. Some upstream/configuration/runtime failures are intentionally mapped to
-generic `400` responses; inspect safe diagnostics rather than assuming all 400s
-mean invalid user input. Unsupported API methods return `405`.
+`503`. Unknown upstream/configuration/runtime failures map to service-unavailable
+`503`, not invalid-input `400`; inspect safe diagnostics for the actual cause.
+Unsupported API methods return `405`.
 
 Media responses use MIME from B2 metadata, Content-Length, `Accept-Ranges:
 bytes`, a B2-version-derived quoted ETag and `Cache-Control:
@@ -479,6 +483,13 @@ Native operations: `b2_authorize_account`, `b2_get_upload_url`, `b2_upload_file`
 download-by-name HEAD/GET and `b2_delete_file_version`. B2 auth is cached for an
 hour in the adapter; authorization errors invalidate that cached auth where
 handled. Upload targets are obtained server-side and validated as B2 hosts.
+Read-like operations retry once on upstream 5xx or network/timeout exceptions;
+provider permission/cap errors are not looped. After an upstream upload 5xx, the
+gateway permits a retry only if B2 HEAD confirms absence and the reservation is
+released. The browser replays the original File/key at most once, after one second,
+through a fresh upload URL. Ambiguous writes are never blindly replayed and
+version-deletion writes are not auto-retried by the adapter. Diagnostic messages
+retain HTTP/provider codes while redacting URLs and credential-like strings.
 
 `FixedLengthStream` supplies an actual Content-Length and avoids buffering whole
 videos inside the Worker's memory budget. The browser does buffer file bytes
@@ -619,7 +630,7 @@ do not add paid bindings/subscriptions as an unreviewed dependency fix.
 Read-only/local regression suite, from repository root:
 
 ```powershell
-node --test tests/access-control.test.cjs tests/media-management.test.cjs b2-migration/tests/*.test.mjs
+node --test tests/access-control.test.cjs tests/media-management.test.cjs tests/storage-retry.test.cjs tests/upload-feedback.test.cjs b2-migration/tests/*.test.mjs
 node --test tests/legacy-display.test.cjs
 node tests/media-cache.test.cjs
 node tests/display-sync.test.cjs
