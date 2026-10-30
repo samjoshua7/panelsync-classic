@@ -675,6 +675,12 @@
 
         <!-- Content Grid -->
         <section>
+            <div id="playlistDraftBar" class="playlist-draft-bar" role="region" aria-label="Playlist changes">
+                <span id="playlistDraftStatus" role="status">All playlist changes saved</span>
+                <small>Save applies duration, order and enable/disable. Uploads and deletion apply immediately.</small>
+                <div><button type="button" id="discardPlaylistBtn" onclick="discardPlaylistDraft()" disabled>Discard</button>
+                <button type="button" id="savePlaylistBtn" onclick="savePlaylistDraft()" disabled>Save changes</button></div>
+            </div>
             <div class="card">
                 <div class="card-title">
                     <i class="fas fa-tv"></i> Slide library
@@ -688,6 +694,7 @@
     </main>
 
 <script src="access-control.js"></script>
+<script src="playlist-draft.js"></script>
 <script src="dashboard.js"></script>
 <script src="media-management.js"></script>
 <script src="browser-storage.js"></script>
@@ -892,6 +899,9 @@
         });
 
         let mediaArray = [];
+        const playlistDraft = PanelPlaylistDraft.create();
+        let draftSaving = false;
+        window.addEventListener('beforeunload', event => {if(playlistDraft.dirty()||draftSaving){event.preventDefault();event.returnValue='';}});
         let mediaMap = {};
         let activeMediaArray = [];
         let activeMediaMap = {};
@@ -925,8 +935,11 @@
             });
 
             mediaArray.sort((a, b) => (a.order || 999) - (b.order || 999));
+            playlistDraft.ingest(mediaArray);
+            mediaArray = playlistDraft.view();
+            updateDraftBar();
             const summary = document.getElementById('playlistSummary');
-            if (summary) summary.textContent = activeMediaArray.length + ' active · ' + disabledMediaArray.length + ' disabled · ' + mediaArray.length + ' total slides';
+            if (summary) summary.textContent = mediaArray.filter(item=>!item.disabled).length + ' active · ' + mediaArray.filter(item=>item.disabled).length + ' disabled · ' + mediaArray.length + ' total slides' + (playlistDraft.dirty()?' (draft)':'');
             renderGrid();
             if (currentPreviewIndex >= 0 && document.getElementById('slidePreviewModal').style.display === 'flex') {
                 renderModalSlide();
@@ -1693,8 +1706,8 @@
             });
             mediaGrid.innerHTML = '';
             
-            const activeCount = activeMediaArray.length;
-            const disabledCount = disabledMediaArray.length;
+            const activeCount = mediaArray.filter(item=>!item.disabled).length;
+            const disabledCount = mediaArray.filter(item=>item.disabled).length;
             document.getElementById('itemCount').textContent = 
                 `${activeCount} active${disabledCount > 0 ? ` (${disabledCount} disabled)` : ''} / ${mediaArray.length} total`;
 
@@ -1778,7 +1791,7 @@
                     : `<button class="btn-sm btn-disable" onclick="toggleDisableSlide('${item.id}', true)" title="Disable this slide from displays"><i class="fas fa-eye-slash"></i> Disable</button>`;
 
                 const statusBadgeHtml = item.disabled
-                    ? `<span class="badge badge-disabled" style="top:10px; left:10px; right:auto;"><i class="fas fa-ban"></i> Disabled</span>`
+                    ? `<span class="badge badge-disabled" style="top:10px; left:10px; right:auto;"><i class="fas fa-ban"></i> ${playlistDraft.has(item.id,'disabled')?'Disabled · draft':'Disabled'}</span>`
                     : '';
 
                 div.innerHTML = `
@@ -1808,35 +1821,47 @@
 
         // CRUD: Reorder (cross-node safe)
         function moveUp(index) {
-            if (index === 0) return;
-            const current = mediaArray[index];
-            const previous = mediaArray[index - 1];
-            
-            const updates = {};
-            updates[`dept/${currentDept}/${getNodePath(current.id)}/${current.id}/order`] = previous.order;
-            updates[`dept/${currentDept}/${getNodePath(previous.id)}/${previous.id}/order`] = current.order;
-            
-            db.ref().update(updates);
+            if(draftSaving)return;
+            playlistDraft.move(index,-1);mediaArray=playlistDraft.view();renderGrid();updateDraftBar();
         }
 
         function moveDown(index) {
-            if (index === mediaArray.length - 1) return;
-            const current = mediaArray[index];
-            const next = mediaArray[index + 1];
-            
-            const updates = {};
-            updates[`dept/${currentDept}/${getNodePath(current.id)}/${current.id}/order`] = next.order;
-            updates[`dept/${currentDept}/${getNodePath(next.id)}/${next.id}/order`] = current.order;
-            
-            db.ref().update(updates);
+            if(draftSaving)return;
+            playlistDraft.move(index,1);mediaArray=playlistDraft.view();renderGrid();updateDraftBar();
         }
 
         // CRUD: Update (cross-node safe)
         function updateDuration(id, newVal) {
-            const val = parseInt(newVal);
-            if (val > 0) {
-                db.ref(`dept/${currentDept}/${getNodePath(id)}/${id}/duration`).set(val);
-            }
+            if(draftSaving)return;
+            try{playlistDraft.edit(id,'duration',Number(newVal));mediaArray=playlistDraft.view();updateDraftBar();}
+            catch(error){alert(error.message);renderGrid();}
+        }
+
+        function updateDraftBar(message){
+            const summary=document.getElementById('playlistSummary');if(summary)summary.textContent=mediaArray.filter(item=>!item.disabled).length+' active · '+mediaArray.filter(item=>item.disabled).length+' disabled · '+mediaArray.length+' total slides'+(playlistDraft.dirty()?' (draft)':'');
+            document.getElementById('playlistDraftStatus').textContent=message||(draftSaving?'Saving playlist…':playlistDraft.dirty()?playlistDraft.count()+' unsaved playlist change(s)':'All playlist changes saved');
+            document.getElementById('savePlaylistBtn').disabled=draftSaving||!playlistDraft.dirty();
+            document.getElementById('discardPlaylistBtn').disabled=draftSaving||!playlistDraft.dirty();
+        }
+        function discardPlaylistDraft(){if(draftSaving)return;playlistDraft.discard();mergeAndRenderMedia();}
+        async function savePlaylistDraft(){
+            if(draftSaving||!playlistDraft.dirty())return;
+            if(navigator.onLine===false){updateDraftBar('Offline. Draft retained in this tab; reconnect before saving.');return;}
+            draftSaving=true;updateDraftBar();
+            try{
+                const snapshots=await Promise.all(['media','disabled_media'].map(node=>db.ref('dept/'+currentDept+'/'+node).once('value')));
+                const fresh=[];snapshots.forEach((snapshot,i)=>Object.entries(snapshot.val()||{}).forEach(([id,item])=>fresh.push({...item,id,disabled:i===1})));
+                const changes=playlistDraft.updates(currentDept,fresh);
+                await db.ref().update(changes);
+                playlistDraft.discard();
+                // Update local authoritative snapshots as well as handling realtime callbacks.
+                const saved=fresh.map(item=>{const node=item.disabled?'disabled_media':'media',base='dept/'+currentDept+'/',source=base+node+'/'+item.id;if(changes[source]===null){const target=node==='media'?'disabled_media':'media';return{...changes[base+target+'/'+item.id],id:item.id,disabled:target==='disabled_media'};}const result={...item};for(const field of ['duration','order'])if(Object.prototype.hasOwnProperty.call(changes,source+'/'+field))result[field]=changes[source+'/'+field];return result;});
+                activeMediaArray=saved.filter(item=>!item.disabled);disabledMediaArray=saved.filter(item=>item.disabled);
+                activeMediaMap=Object.fromEntries(activeMediaArray.map(item=>[item.id,item]));disabledMediaMap=Object.fromEntries(disabledMediaArray.map(item=>[item.id,item]));
+                mergeAndRenderMedia();
+                updateDraftBar('Saved. Online TVs pick this up on their normal sync; media cache is preserved.');
+            }catch(error){updateDraftBar('Not saved: '+error.message);}
+            finally{draftSaving=false;document.getElementById('savePlaylistBtn').disabled=!playlistDraft.dirty();document.getElementById('discardPlaylistBtn').disabled=!playlistDraft.dirty();}
         }
 
         function updateBackground(id, checked) {
@@ -1860,6 +1885,7 @@
 
         // CRUD: Delete (cross-node safe)
         async function deleteItem(id) {
+            if(draftSaving){alert('Wait for the playlist Save to finish.');return;}
             if (!checkRateLimit('deletes', 10)) return;
             if (confirm("Permanently remove this item from display?")) {
                 const item = getItemById(id);
@@ -1881,31 +1907,12 @@
 
         // --- ZERO-EGRESS SLIDE ARCHIVING (DISABLE / ENABLE) ---
         async function toggleDisableSlide(slideId, disableState) {
-            if (!checkRateLimit('writes', 20)) return;
-            showLoading(disableState ? "Disabling slide..." : "Enabling slide...");
+            if(draftSaving){alert('Wait for the playlist Save to finish.');return;}
             try {
-                const updates = {};
-                if (disableState) {
-                    // Disabling: move atomically from media to disabled_media
-                    const item = activeMediaMap[slideId] || mediaArray.find(s => s.id === slideId);
-                    if (!item) throw new Error("Slide not found in active list");
-                    const cloned = Object.assign({}, item);
-                    cloned.disabled = true;
-                    updates[`dept/${currentDept}/disabled_media/${slideId}`] = cloned;
-                    updates[`dept/${currentDept}/media/${slideId}`] = null;
-                } else {
-                    // Enabling: move atomically from disabled_media to media
-                    const item = disabledMediaMap[slideId] || mediaArray.find(s => s.id === slideId);
-                    if (!item) throw new Error("Slide not found in disabled list");
-                    const cloned = Object.assign({}, item);
-                    delete cloned.disabled;
-                    updates[`dept/${currentDept}/media/${slideId}`] = cloned;
-                    updates[`dept/${currentDept}/disabled_media/${slideId}`] = null;
-                }
-                await db.ref().update(updates);
-                hideLoading();
+                playlistDraft.edit(slideId,'disabled',!!disableState);
+                mediaArray=playlistDraft.view();renderGrid();updateDraftBar();
+                if(currentPreviewIndex>=0)renderModalSlide();
             } catch (e) {
-                hideLoading();
                 alert("Failed to toggle slide status: " + e.message);
             }
         }
@@ -1973,6 +1980,7 @@
                 statusBadge.textContent = 'ACTIVE';
                 statusBadge.className = 'badge badge-image';
             }
+            if(playlistDraft.has(item.id,'disabled'))statusBadge.textContent+=' · UNSAVED';
 
             // Media elements
             const imgEl = document.getElementById('previewModalImg');
@@ -2321,7 +2329,7 @@
         }
 
         function openEditTextModal(id) {
-            const item = getItemById(id);
+            const item = mediaArray.find(item=>item.id===id);
             if (!item) return;
             document.getElementById('editIndex').value = id;
             document.getElementById('editContent').value = item.content;
@@ -2333,26 +2341,29 @@
         }
 
         function saveTextEdit() {
+            if(draftSaving)return;
             if (!checkRateLimit('writes', 20)) return;
 
             const id = document.getElementById('editIndex').value;
             const item = getItemById(id);
             if (!item) return;
             
-            item.content = document.getElementById('editContent').value.trim();
-            item.bgColor = document.getElementById('editBg').value;
-            item.textColor = document.getElementById('editColor').value;
-            item.duration = parseInt(document.getElementById('editDuration').value) || 10;
+            const content = document.getElementById('editContent').value.trim();
+            const bgColor = document.getElementById('editBg').value;
+            const textColor = document.getElementById('editColor').value;
+            const duration = Number(document.getElementById('editDuration').value);
+            if(!Number.isInteger(duration)||duration<1||duration>600){alert('Duration must be a whole number from 1 to 600.');return;}
 
-            if (!item.content) {
+            if (!content) {
                 alert("Content cannot be empty.");
                 return;
             }
 
             const node = getNodePath(id);
-            db.ref(`dept/${currentDept}/${node}/${id}`).set(item).then(() => {
+            db.ref(`dept/${currentDept}/${node}/${id}`).update({content,bgColor,textColor}).then(() => {
+                playlistDraft.edit(id,'duration',duration);mediaArray=playlistDraft.view();renderGrid();updateDraftBar();
                 document.getElementById('textEditModal').style.display = 'none';
-            });
+            }).catch(error=>alert(error.message));
         }
     </script>
 
@@ -2381,11 +2392,12 @@
             <div class="form-group">
                 <label>Duration (seconds)</label>
                 <input type="number" id="editDuration" min="1" max="600">
+                <small>Duration joins your playlist draft. Use the top Save changes button to publish it. Text and colors apply immediately.</small>
             </div>
 
             <div class="modal-actions">
                 <button class="btn-sm btn-update" onclick="document.getElementById('textEditModal').style.display='none'">Cancel</button>
-                <button class="primary-btn" style="margin-top:0;" onclick="saveTextEdit()">Save Changes</button>
+                <button class="primary-btn" style="margin-top:0;" onclick="saveTextEdit()">Apply text / queue duration</button>
             </div>
         </div>
     </div>
