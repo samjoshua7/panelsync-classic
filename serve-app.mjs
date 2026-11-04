@@ -1,7 +1,7 @@
 // Small local app server. Explicit allowlist excludes credentials/migration data.
 import http from 'node:http';
 import fs from 'node:fs';
-const files = new Set(['index.html','admin.html','display.html','access-control.js','browser-storage.js','media-management.js','media-cache.js','dashboard.js','dashboard.css']);
+const files = new Set(['index.html','admin.html','display.html','access-control.js','browser-storage.js','media-management.js','media-cache.js','dashboard.js','dashboard.css','playlist-draft.js']);
 const port = Number(process.argv[2] || 5502);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw Error('Invalid port');
 http.createServer((request, response) => {

@@ -457,6 +457,7 @@
 
     var metadataRequests = {}, metadataEtags = {}, metadataRetry = {}, metadataSeen = {};
     var metadataStats = { responses: 0, notModified: 0, responseCharacters: 0, offlineReads: 0 };
+    var playlistMediaSignature = null;
     function requestMetadata(url, callback) {
       if (metadataRequests[url] || (metadataRetry[url] || 0) > Date.now()) return;
       function cached() {
@@ -524,9 +525,23 @@
         next.sort(function (a, b) {
           return (parseInt(a.order, 10) || 0) - (parseInt(b.order, 10) || 0);
         });
+        var currentKey = mediaArray[currentIndex] && mediaArray[currentIndex]._slideKey;
+        var found = -1, urls = [];
+        for (key in data) {
+          if (Object.prototype.hasOwnProperty.call(data, key) && data[key] && !data[key].disabled) data[key]._slideKey = key;
+        }
+        for (var i = 0; i < next.length; i++) {
+          if (next[i]._slideKey === currentKey) found = i;
+          if (next[i].url) urls.push(next[i].url);
+        }
         mediaArray = next;
-        preloadAllMedia(mediaArray);
-        if (currentIndex === -1 && mediaArray.length) nextSlide();
+        if (currentKey) currentIndex = found;
+        // Duration/order saves do not even rescan the media cache. URL changes
+        // alone trigger warmup; current playback is left until its boundary.
+        urls.sort();
+        var signature = JSON.stringify(urls);
+        if (signature !== playlistMediaSignature) { playlistMediaSignature = signature; preloadAllMedia(mediaArray); }
+        if (!currentKey && currentIndex === -1 && mediaArray.length) nextSlide();
       });
     }
     function fetchBackgrounds() {
