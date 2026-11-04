@@ -17,3 +17,11 @@ test('enable/disable UI does not perform immediate Firebase writes',()=>{
  const source=fs.readFileSync('admin.html','utf8');const body=source.slice(source.indexOf('        async function toggleDisableSlide('),source.indexOf('        // --- SLIDE PREVIEW MODAL HANDLERS'));
  assert.ok(body.includes("playlistDraft.edit(slideId,'disabled'"));assert.ok(!body.includes('db.ref'));
 });
+
+test('background/music handlers draft locally and Save retains scalar switches',async()=>{
+ const h=environment();h.draft.discard();h.draft.edit('a','useMusic',false);h.draft.edit('a','useBackground',true);
+ await h.context.savePlaylistDraft();assert.equal(h.writes.length,1);assert.equal(h.writes[0]['dept/cse/media/a/useMusic'],false);assert.equal(h.context.activeMediaMap.a.useBackground,true);assert.equal(h.context.activeMediaMap.a.useMusic,false);
+ const source=fs.readFileSync('admin.html','utf8');const body=source.slice(source.indexOf('        function updateBackground('),source.indexOf('        function showLoading('));
+ assert.ok(!body.includes('db.ref'));assert.ok(body.includes("updateSlideOptionDraft(id, 'useMusic'"));assert.ok(body.includes("updateSlideOptionDraft(id, 'useBackground'"));
+ const preview=source.slice(source.indexOf('        function toggleDisableCurrentPreview()'),source.indexOf('        function editCurrentPreviewText()'));assert.ok(preview.includes('toggleDisableSlide(item.id, !item.disabled)'));
+});

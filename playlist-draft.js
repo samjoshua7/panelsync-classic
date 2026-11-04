@@ -4,13 +4,14 @@
     let rows=[], patches=new Map(), originals=new Map();
     const copy=items=>items.map(item=>({...item}));
     const identity=item=>(item.disabled?'disabled_media':'media')+'/'+item.id;
+    const booleanFields=['disabled','useBackground','useMusic'];
     function ingest(items){rows=copy(items);}
     function edit(id,field,value){
       const item=rows.find(row=>row.id===id);if(!item)throw Error('Slide no longer exists. Discard and reload.');
-      if(!['order','duration','disabled'].includes(field))throw Error('Unsupported draft field');
-      if(field==='disabled' ? typeof value!=='boolean' : !Number.isInteger(value)||value<1||(field==='duration'&&value>600))throw Error('Duration must be a whole number from 1 to 600 seconds.');
+      if(!['order','duration',...booleanFields].includes(field))throw Error('Unsupported draft field');
+      if(booleanFields.includes(field) ? typeof value!=='boolean' : !Number.isInteger(value)||value<1||(field==='duration'&&value>600))throw Error('Invalid playlist value. Duration must be a whole number from 1 to 600 seconds; switches must be true or false.');
       const key=id+'/'+field;
-      if(!originals.has(key))originals.set(key,{value:field==='disabled'?!!item.disabled:item[field],node:identity(item)});
+      if(!originals.has(key))originals.set(key,{value:booleanFields.includes(field)?!!item[field]:item[field],node:identity(item)});
       if(value===originals.get(key).value){patches.delete(key);originals.delete(key);}else patches.set(key,{id,field,value});
     }
     function view(){return copy(rows).map(item=>{for(const patch of patches.values())if(patch.id===item.id)item[patch.field]=patch.value;return item;}).sort((a,b)=>(a.order||999)-(b.order||999));}
@@ -21,7 +22,7 @@
         const item=fresh.find(row=>row.id===patch.id),before=originals.get(key);
         if(fresh.filter(row=>row.id===patch.id).length>1)throw Error('Slide exists in both active and archived lists. Resolve the duplicate before saving.');
         if(!item||identity(item)!==before.node)throw Error('A slide was removed or enabled/disabled while you edited. Discard and review the latest playlist.');
-        const actual=patch.field==='disabled'?!!item.disabled:item[patch.field];
+        const actual=booleanFields.includes(patch.field)?!!item[patch.field]:item[patch.field];
         if(actual!==before.value&&actual!==patch.value)throw Error('Another editor changed this playlist. Discard and review before saving.');
         if(!groups.has(item.id))groups.set(item.id,{item,fields:{}});
         groups.get(item.id).fields[patch.field]=patch.value;

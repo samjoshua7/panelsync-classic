@@ -24,3 +24,18 @@ test('enable/disable toggled back to saved state clears the change without write
 test('external archive movement blocks a stale enable/disable draft',()=>{
  const{draft,rows}=setup();draft.edit('a','disabled',true);assert.throws(()=>draft.updates('cse',rows.map(row=>row.id==='a'?{...row,disabled:true}:row)),/enabled\/disabled/);
 });
+
+test('background/music switches draft, revert and discard without touching saved rows',()=>{
+ const{draft,rows}=setup();draft.edit('a','useBackground',true);draft.edit('a','useMusic',true);
+ assert.equal(rows[0].useMusic,undefined);assert.equal(draft.view()[0].useBackground,true);
+ assert.deepEqual(JSON.parse(JSON.stringify(draft.updates('cse',rows))),{'dept/cse/media/a/useBackground':true,'dept/cse/media/a/useMusic':true});
+ draft.edit('a','useMusic',false);assert.equal(draft.has('a','useMusic'),false);
+ draft.discard();assert.equal(draft.dirty(),false);assert.equal(draft.view()[0].useBackground,undefined);
+ assert.throws(()=>draft.edit('a','useMusic','true'));
+});
+
+test('archive moves combine both switches with visibility and duration in one record',()=>{
+ const{draft,rows}=setup();draft.edit('c','disabled',false);draft.edit('c','useMusic',true);draft.edit('c','useBackground',true);draft.edit('c','duration',25);
+ const updates=draft.updates('cse',rows);assert.equal(Object.keys(updates).length,2);
+ assert.equal(updates['dept/cse/media/c'].useMusic,true);assert.equal(updates['dept/cse/media/c'].useBackground,true);assert.equal(updates['dept/cse/media/c'].duration,25);
+});

@@ -677,7 +677,7 @@
         <section>
             <div id="playlistDraftBar" class="playlist-draft-bar" role="region" aria-label="Playlist changes">
                 <span id="playlistDraftStatus" role="status">All playlist changes saved</span>
-                <small>Save applies duration, order and enable/disable. Uploads and deletion apply immediately.</small>
+                <small>Save applies duration, order, enable/disable, Use Background and Use Music. Uploads and deletion apply immediately.</small>
                 <div><button type="button" id="discardPlaylistBtn" onclick="discardPlaylistDraft()" disabled>Discard</button>
                 <button type="button" id="savePlaylistBtn" onclick="savePlaylistDraft()" disabled>Save changes</button></div>
             </div>
@@ -1855,7 +1855,7 @@
                 await db.ref().update(changes);
                 playlistDraft.discard();
                 // Update local authoritative snapshots as well as handling realtime callbacks.
-                const saved=fresh.map(item=>{const node=item.disabled?'disabled_media':'media',base='dept/'+currentDept+'/',source=base+node+'/'+item.id;if(changes[source]===null){const target=node==='media'?'disabled_media':'media';return{...changes[base+target+'/'+item.id],id:item.id,disabled:target==='disabled_media'};}const result={...item};for(const field of ['duration','order'])if(Object.prototype.hasOwnProperty.call(changes,source+'/'+field))result[field]=changes[source+'/'+field];return result;});
+                const saved=fresh.map(item=>{const node=item.disabled?'disabled_media':'media',base='dept/'+currentDept+'/',source=base+node+'/'+item.id;if(changes[source]===null){const target=node==='media'?'disabled_media':'media';return{...changes[base+target+'/'+item.id],id:item.id,disabled:target==='disabled_media'};}const result={...item};for(const field of ['duration','order','useBackground','useMusic'])if(Object.prototype.hasOwnProperty.call(changes,source+'/'+field))result[field]=changes[source+'/'+field];return result;});
                 activeMediaArray=saved.filter(item=>!item.disabled);disabledMediaArray=saved.filter(item=>item.disabled);
                 activeMediaMap=Object.fromEntries(activeMediaArray.map(item=>[item.id,item]));disabledMediaMap=Object.fromEntries(disabledMediaArray.map(item=>[item.id,item]));
                 mergeAndRenderMedia();
@@ -1866,12 +1866,21 @@
 
         function updateBackground(id, checked) {
             if(checked && !(currentBackground && currentBackground.url)){alert('Add a background image in the Background tab first, then enable it for this slide.');renderGrid();return;}
-            db.ref(`dept/${currentDept}/${getNodePath(id)}/${id}/useBackground`).set(checked);
+            updateSlideOptionDraft(id, 'useBackground', checked);
         }
 
         function updateMusic(id, checked) {
             if(checked && !(currentMusicObj && currentMusicObj.url)){alert('Add an audio file in the Music tab first, then enable it for this slide.');renderGrid();return;}
-            db.ref(`dept/${currentDept}/${getNodePath(id)}/${id}/useMusic`).set(checked);
+            updateSlideOptionDraft(id, 'useMusic', checked);
+        }
+
+        function updateSlideOptionDraft(id, field, checked) {
+            if(draftSaving){renderGrid();return;}
+            try {
+                playlistDraft.edit(id, field, checked);
+                mediaArray=playlistDraft.view();renderGrid();updateDraftBar();
+                if(currentPreviewIndex>=0)renderModalSlide();
+            } catch(error){updateDraftBar(error.message);renderGrid();}
         }
 
         function showLoading(text) {

@@ -575,7 +575,7 @@ are not bypassed. Real codec/WebView/TV compatibility needs hardware testing.
 
 ### Saving duration, ordering and enable/disable
 
-Duration inputs, up/down ordering and Enable/Disable controls create an in-memory draft; they
+Duration inputs, up/down ordering, Enable/Disable, Use Background and Use Music controls create an in-memory draft; they
 do not write to Firebase per edit. The top Save changes / Discard bar shows the
 dirty state, and leaving the page with a draft requests a browser warning.
 Drafts are tab-local, not durable across reloads. Discard restores current
@@ -586,9 +586,9 @@ The text editor queues its duration separately and labels that distinction.
 Save validates whole-number durations (1–600 seconds), reads current active and
 archived metadata once each, rejects known same-field conflicts or deleted/moved
 slides, then performs one atomic multi-path update. Unmoved slides use only changed
-`order` and `duration` scalars. Enable/disable writes a fresh complete record into
+`order`, `duration`, `useBackground` and `useMusic` scalars. Enable/disable writes a fresh complete record into
 its destination node and deletes the source in that same update, with any draft
-duration/order applied. Media URLs stay identical and no B2 blobs are rewritten.
+duration/order/background/music choices applied. Media URLs stay identical and no B2 blobs are rewritten.
 There are no overlapping parent/child paths in the atomic update. The draft remains available
 on validation/write failure. Realtime updates to unrelated fields are preserved.
 Conflict checking is best-effort read-before-write, not server-side compare-and-
