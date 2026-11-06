@@ -573,6 +573,33 @@ are not bypassed. Real codec/WebView/TV compatibility needs hardware testing.
 
 ## Dashboard and previews
 
+### Remote player refresh (display v2.1.0+)
+
+Display Settings → **Push fresh display** immediately writes one unique
+`dept/{dept}/settings/displayRefresh` token; it does not publish playlist drafts.
+The existing settings poll receives it (no additional periodic requests). Only
+live responses can queue a refresh; cached offline settings cannot trigger it.
+At a slide boundary the player preflights its own page with a unique
+`displayRefresh` query parameter, checks for a successful player response, then
+navigates there. The token in the URL prevents repeated refreshes after startup.
+Failures keep playback running and retry no more than once per minute at slide
+boundaries. A long-running video can delay the request until its next boundary.
+
+This bypasses the old page URL's HTTP cache; it does not erase IndexedDB media,
+change media URLs or force video downloads. One manual push adds a small metadata
+write and a page check/navigation per compatible player, not zero traffic. A
+refresh can exit fullscreen or require a gesture to resume audible autoplay.
+The admin reports request submission, not device acknowledgement. Offline TVs
+handle the latest request on reconnect. Older code without this feature must
+first load this release once. Do not claim this can remotely upgrade such code.
+
+The visible `PanelSync Classic Display v2.1.0` label is derived from
+`DISPLAY_VERSION` in the loaded build, not from Firebase's desired version.
+For future player releases bump that constant, the fallback label and the
+`media-cache.js?v=...` asset version when appropriate. Deploy GitHub Pages first,
+verify it, then push the refresh request. Keep media cache format changes
+backward-compatible; no service worker or automatic cache deletion is introduced.
+
 ### Saving duration, ordering and enable/disable
 
 Duration inputs, up/down ordering, Enable/Disable, Use Background and Use Music controls create an in-memory draft; they

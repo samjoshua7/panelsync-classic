@@ -598,6 +598,9 @@
                     </select>
                 </div>
                 <button class="primary-btn" onclick="saveTransition()">Save Setting</button>
+                <button id="pushFreshDisplayBtn" class="primary-btn" style="margin-top:12px" onclick="pushFreshDisplay()">Push fresh display</button>
+                <small>Requests a player-page refresh on this department’s online TVs at a slide boundary. Cached videos stay intact. Requires display v2.1.0 or later.</small>
+                <p id="pushFreshDisplayStatus" role="status"></p>
             </div>
 
             <div class="card" style="margin-top: 2rem;">
@@ -1862,6 +1865,19 @@
                 updateDraftBar('Saved. Online TVs pick this up on their normal sync; media cache is preserved.');
             }catch(error){updateDraftBar('Not saved: '+error.message);}
             finally{draftSaving=false;document.getElementById('savePlaylistBtn').disabled=!playlistDraft.dirty();document.getElementById('discardPlaylistBtn').disabled=!playlistDraft.dirty();}
+        }
+
+        async function pushFreshDisplay() {
+            if(!confirm('Refresh this department’s TV player pages? This does not publish unsaved slide changes or clear cached videos.'))return;
+            const button=document.getElementById('pushFreshDisplayBtn'),status=document.getElementById('pushFreshDisplayStatus');
+            button.disabled=true;
+            try {
+                if(navigator.onLine===false)throw Error('You are offline. Reconnect before sending.');
+                const token=Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);
+                await db.ref(`dept/${currentDept}/settings/displayRefresh`).set(token);
+                status.textContent='Refresh request saved. Compatible online TVs check on normal sync, then refresh at a slide boundary. Delivery is not confirmed.';
+            } catch(error){status.textContent='Could not send: '+error.message;}
+            finally{button.disabled=false;}
         }
 
         function updateBackground(id, checked) {
