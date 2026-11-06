@@ -284,14 +284,39 @@
     <div id="cacheStatusMsg">System Ready. Click 'Enable Audio' to start.</div>
   </div>
 
-  <div id="debugOverlay">PanelSync Classic Display v2.0</div>
+  <div id="debugOverlay">PanelSync Classic Display v2.1.0</div>
 
-  <script src="media-cache.js"></script>
+  <script src="media-cache.js?v=2.1.0"></script>
   <script>
     // ==========================================
     // LEGACY SMART TV COMPATIBILITY (ES5 ONLY)
     // ==========================================
 
+    var DISPLAY_VERSION = '2.1.0';
+    document.getElementById('debugOverlay').textContent = 'PanelSync Classic Display v' + DISPLAY_VERSION;
+    var pendingDisplayRefresh = null, displayRefreshBusy = false, displayRefreshRetryAt = 0;
+    function queueDisplayRefresh(token) {
+      if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(token)) return;
+      if (token === urlParams.displayRefresh) return;
+      pendingDisplayRefresh = token;
+    }
+    function refreshDisplayAtBoundary() {
+      if (!pendingDisplayRefresh || displayRefreshBusy || navigator.onLine === false || Date.now() < displayRefreshRetryAt) return;
+      var token = pendingDisplayRefresh;
+      var query = window.location.search.replace(/([?&])displayRefresh=[^&]*(&|$)/, '$1').replace(/[?&]$/, '');
+      var target = window.location.pathname + query + (query ? '&' : '?') + 'displayRefresh=' + encodeURIComponent(token);
+      var xhr = new XMLHttpRequest();
+      displayRefreshBusy = true;
+      displayRefreshRetryAt = Date.now() + 60000;
+      xhr.open('GET', target, true); xhr.timeout = 15000;
+      xhr.onload = function () {
+        displayRefreshBusy = false;
+        // Keep playing if deployment/network is unavailable; do not navigate to an error page.
+        if (xhr.status === 200 && xhr.responseText.indexOf('DISPLAY_VERSION') !== -1) window.location.replace(target + window.location.hash);
+      };
+      xhr.onerror = xhr.ontimeout = function () { displayRefreshBusy = false; };
+      xhr.send();
+    }
     // Department support
     var urlParams = (function () {
       var params = {};
@@ -466,7 +491,7 @@
           var saved = localStorage.getItem('panelsync-metadata:' + url);
           if (saved !== null) {
             metadataStats.offlineReads++;
-            callback(JSON.parse(saved)); metadataSeen[url] = true;
+            callback(JSON.parse(saved), false); metadataSeen[url] = true;
           }
         } catch (e) { }
       }
@@ -502,7 +527,7 @@
             var data = JSON.parse(xhr.responseText);
             metadataStats.responses++; metadataStats.responseCharacters += xhr.responseText.length;
             try { localStorage.setItem('panelsync-metadata:' + url, xhr.responseText); } catch (e) { }
-            callback(data); metadataSeen[url] = true;
+            callback(data, true); metadataSeen[url] = true;
           } catch (e) { console.warn('Metadata could not be processed'); }
         };
         xhr.onerror = xhr.ontimeout = xhr.onabort = failed;
@@ -510,7 +535,10 @@
       } catch (e) { failed(); }
     }
     function fetchSettings() {
-      requestMetadata(SETTINGS_URL, function (data) { transitionType = data && data.transition || 'cut'; });
+      requestMetadata(SETTINGS_URL, function (data, live) {
+        transitionType = data && data.transition || 'cut';
+        if (live && data) queueDisplayRefresh(data.displayRefresh);
+      });
     }
     function fetchMedia() {
       requestMetadata(RTDB_URL, function (data) {
@@ -552,6 +580,7 @@
     }
 
     function nextSlide() {
+      refreshDisplayAtBoundary();
       if (mediaArray.length === 0) {
         currentTimer = setTimeout(nextSlide, 5000);
         return;
