@@ -8,3 +8,5 @@ b2-migration/.wrangler/
 b2-migration/.dev.vars*
 b2-migration/config.local.json
 /.wrangler/
+/output/report/
+/tmp/report/
